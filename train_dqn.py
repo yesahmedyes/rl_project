@@ -254,12 +254,6 @@ def train_dqn(
     print(f"Learning rate: {learning_rate}")
     if use_prioritized_replay:
         print(f"PER Alpha: {per_alpha}, Beta: {per_beta}")
-    print("\nOutput directories:")
-    print("  Models: models/")
-    print("  Checkpoints: checkpoints/")
-    print("  Logs: logs/")
-    print("  Plots: plots/")
-    print(f"\nLog file: {log_file}")
     print("=" * 60 + "\n")
 
     # Convert infinite episodes to very large number for range
