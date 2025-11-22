@@ -1,8 +1,3 @@
-"""
-Parallel worker functions for distributed episode collection.
-Each worker runs episodes and collects trajectories without doing any learning.
-"""
-
 import random
 import numpy as np
 import torch
@@ -13,11 +8,6 @@ from models import DuelingDQNNetwork
 
 
 class InferencePolicy:
-    """
-    Lightweight inference-only policy for workers.
-    No replay buffer, no optimizer, just forward pass.
-    """
-
     def __init__(self, weights, state_dim=12, max_actions=12, device="cpu"):
         self.device = torch.device(device)
         self.state_dim = state_dim
@@ -28,11 +18,11 @@ class InferencePolicy:
         self.policy_net = DuelingDQNNetwork(
             state_dim, hidden_dim=256, max_actions=max_actions
         ).to(self.device)
+
         self.policy_net.load_state_dict(weights["policy_net"])
         self.policy_net.eval()
 
     def encode_state(self, state):
-        """Same encoding as Policy_DQN"""
         gotis_red, gotis_yellow, dice_roll, _, player_turn = state
 
         if player_turn == 0:
@@ -60,7 +50,6 @@ class InferencePolicy:
         return np.array(state_vector, dtype=np.float32)
 
     def get_action(self, state, action_space):
-        """Get action using current policy (epsilon-greedy for exploration)"""
         if not action_space:
             return None
 
@@ -74,6 +63,7 @@ class InferencePolicy:
 
         # Greedy action
         state_encoded = self.encode_state(state)
+
         with torch.no_grad():
             state_tensor = torch.FloatTensor(state_encoded).unsqueeze(0).to(self.device)
 
@@ -93,6 +83,7 @@ class InferencePolicy:
 
         # Select best action
         valid_q_values = []
+
         for action in action_space:
             dice_idx, goti_idx = action
             action_net_idx = dice_idx * 4 + goti_idx
@@ -105,33 +96,20 @@ class InferencePolicy:
             return action_space[0]
 
     def _create_action_mask(self, action_space):
-        """Create action mask for valid actions"""
         mask = [False] * self.max_actions
+
         for dice_idx, goti_idx in action_space:
             action_idx = dice_idx * 4 + goti_idx
             action_idx = max(0, min(action_idx, self.max_actions - 1))
             mask[action_idx] = True
+
         return mask
 
 
 def rollout_worker(
     worker_id, num_episodes, weights, agent_player_positions, opponent_snapshots
 ):
-    """
-    Worker function that collects episodes in parallel.
-
-    Args:
-        worker_id: Unique worker identifier
-        num_episodes: Number of episodes to collect
-        weights: Dictionary with policy network weights and epsilon
-        agent_player_positions: List of player positions (0 or 1) for each episode
-        opponent_snapshots: List of opponent snapshots for self-play
-
-    Returns:
-        List of trajectories, where each trajectory is a list of
-        (state_encoded, action_idx, reward, next_state_encoded, done) tuples
-    """
-    # Set random seed for reproducibility (each worker gets different seed)
+    # Each worker gets different seed
     np.random.seed(worker_id * 1000 + np.random.randint(1000))
     random.seed(worker_id * 1000 + np.random.randint(1000))
 
@@ -147,16 +125,12 @@ def rollout_worker(
 
     # Create self-play policy if snapshots available
     if opponent_snapshots:
-        # Use a random snapshot for self-play
         snapshot_weights = random.choice(opponent_snapshots)
         self_play_policy = InferencePolicy(snapshot_weights, device="cpu")
-    else:
-        self_play_policy = None
 
     all_trajectories = []
 
     for ep_idx in range(num_episodes):
-        # Select opponent for this episode
         opponent_type = np.random.choice(
             ["random", "heuristic", "self_play"], p=[0.25, 0.25, 0.5]
         )
@@ -232,7 +206,6 @@ def rollout_worker(
             agent_won = winner == agent_player
             final_reward = 1.0 if agent_won else -1.0
 
-            # Replace last transition with terminal state
             last_state, last_action, _, _, _ = trajectory[-1]
             next_state_encoded = np.zeros(agent_policy.state_dim, dtype=np.float32)
             trajectory[-1] = (
@@ -243,7 +216,6 @@ def rollout_worker(
                 True,
             )
 
-        # Add trajectory (even if empty - still tracks episode completion)
         all_trajectories.append(trajectory)
 
     return all_trajectories

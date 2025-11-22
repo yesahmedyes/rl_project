@@ -15,7 +15,7 @@ class Policy_DQN:
         epsilon_decay=0.9995,
         learning_rate=0.001,
         gamma=0.99,
-        batch_size=64,
+        batch_size=512,
         buffer_size=100000,
         target_update_freq=1000,
         training_mode=False,
@@ -40,6 +40,8 @@ class Policy_DQN:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
             self.device = device
+
+        print(self.device)
 
         self.state_dim = 12  # 4 my gotis + 4 opp gotis + 3 dice + 1 player turn
         self.max_actions = 12  # Max possible actions (3 dice × 4 gotis)
@@ -363,19 +365,16 @@ class Policy_DQN:
         self.last_action_space = None
 
     def get_weights(self):
-        """Get policy network weights for distribution to workers"""
         return {
             "policy_net": self.policy_net.state_dict(),
             "epsilon": self.epsilon,
         }
 
     def set_weights(self, weights):
-        """Set policy network weights from main process"""
         self.policy_net.load_state_dict(weights["policy_net"])
         self.epsilon = weights["epsilon"]
 
     def add_trajectory_to_buffer(self, trajectory):
-        """Add a complete trajectory to replay buffer"""
         for transition in trajectory:
             state, action_idx, reward, next_state, done = transition
             self.replay_buffer.push(state, action_idx, reward, next_state, done)

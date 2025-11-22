@@ -26,7 +26,7 @@ def train_dqn(
     epsilon_decay=0.9995,
     learning_rate=0.001,
     gamma=0.99,
-    batch_size=64,
+    batch_size=512,
     buffer_size=100000,
     target_update_freq=1000,
     save_path="policy_dqn.pth",
@@ -40,20 +40,15 @@ def train_dqn(
     per_alpha=0.6,
     per_beta=0.4,
     num_workers=None,
-    episodes_per_batch=None,
+    episodes_per_batch=10,
     learning_steps_per_batch=None,
 ):
     global interrupted
 
     ensure_directories()
 
-    # Determine number of workers (CPU cores)
     if num_workers is None:
         num_workers = max(1, mp.cpu_count() - 2)  # Leave 2 cores for system
-
-    # Episodes per batch: how many episodes each worker collects per iteration
-    if episodes_per_batch is None:
-        episodes_per_batch = 4  # Each worker collects 4 episodes per batch
 
     # Learning steps: how many gradient updates per batch
     if learning_steps_per_batch is None:
@@ -68,7 +63,6 @@ def train_dqn(
     print(f"   GPU: {gpu_device}")
     print()
 
-    # Main process: Create agent with GPU
     agent = Policy_DQN(
         epsilon_start=epsilon_start,
         epsilon_end=epsilon_end,
@@ -166,10 +160,11 @@ def train_dqn(
             if len(opponent_manager.snapshots) > 0:
                 # Get recent snapshots
                 recent_snapshots = opponent_manager.snapshots[-5:]
+
                 opponent_snapshots = [
                     {
                         "policy_net": snapshot[1],
-                        "epsilon": agent.epsilon * 0.5,  # Lower epsilon for self-play
+                        "epsilon": agent.epsilon * 0.5,
                     }
                     for snapshot in recent_snapshots
                 ]
@@ -444,18 +439,14 @@ def local_signal_handler(sig, frame):
 
 
 if __name__ == "__main__":
-    # Set multiprocessing start method to 'spawn' for compatibility
     mp.set_start_method("spawn", force=True)
 
     signal.signal(signal.SIGINT, local_signal_handler)
 
     try:
-        agent = train_dqn(
-            n_episodes=10000000,  # Run until interrupted (essentially infinite)
-            num_workers=None,  # Auto-detect CPU cores
-            episodes_per_batch=4,  # Each worker collects 4 episodes per batch
-            learning_steps_per_batch=None,  # Auto: num_workers * episodes_per_batch
-        )
+        # Run until interrupted (essentially infinite)
+        agent = train_dqn(n_episodes=10000000)
+
     except KeyboardInterrupt:
         print("\n\n✅ Training interrupted gracefully!")
 
