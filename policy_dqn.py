@@ -41,8 +41,6 @@ class Policy_DQN:
         else:
             self.device = device
 
-        print(self.device)
-
         self.state_dim = 12  # 4 my gotis + 4 opp gotis + 3 dice + 1 player turn
         self.max_actions = 12  # Max possible actions (3 dice × 4 gotis)
 

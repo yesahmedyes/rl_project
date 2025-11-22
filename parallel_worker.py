@@ -127,6 +127,8 @@ def rollout_worker(
     if opponent_snapshots:
         snapshot_weights = random.choice(opponent_snapshots)
         self_play_policy = InferencePolicy(snapshot_weights, device="cpu")
+    else:
+        self_play_policy = None
 
     all_trajectories = []
 
