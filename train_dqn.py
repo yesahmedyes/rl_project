@@ -23,11 +23,11 @@ def train_dqn(
     n_episodes=50000,
     epsilon_start=1.0,
     epsilon_end=0.05,
-    epsilon_decay=0.9995,
+    epsilon_decay=0.98,
     learning_rate=0.001,
     gamma=0.99,
     batch_size=512,
-    buffer_size=100000,
+    buffer_size=1000000,
     target_update_freq=1000,
     save_path="policy_dqn.pth",
     eval_interval=5000,
@@ -98,9 +98,9 @@ def train_dqn(
     win_rate_history = []
 
     opponent_stats = {
-        "Random": {"wins": 0, "games": 0},
-        "Heuristic": {"wins": 0, "games": 0},
-        "Self-Play": {"wins": 0, "games": 0},
+        "Random": {"wins": 0, "games": 0, "rewards": []},
+        "Heuristic": {"wins": 0, "games": 0, "rewards": []},
+        "Self-Play": {"wins": 0, "games": 0, "rewards": []},
     }
 
     best_win_rate = 0.0
@@ -114,14 +114,16 @@ def train_dqn(
         writer.writerow(
             [
                 "episode",
-                "win_rate",
+                "win_rate_overall",
+                "win_rate_vs_random",
+                "win_rate_vs_heuristic",
+                "win_rate_vs_self_play",
+                "avg_reward",
                 "avg_length",
                 "epsilon",
                 "buffer_size",
                 "steps_done",
                 "timestamp",
-                "gpu_memory_allocated_gb",
-                "gpu_memory_max_gb",
             ]
         )
 
@@ -201,29 +203,40 @@ def train_dqn(
             batch_lengths = []
 
             for worker_trajectories in results:
-                for trajectory in worker_trajectories:
+                for episode_data in worker_trajectories:
+                    trajectory = episode_data["trajectory"]
+                    opponent_type = episode_data["opponent_type"]
+                    agent_won = episode_data["agent_won"]
+                    episode_length = episode_data["episode_length"]
+                    final_reward = episode_data["final_reward"]
+
                     if len(trajectory) > 0:
                         # Add trajectory to replay buffer
                         agent.add_trajectory_to_buffer(trajectory)
 
-                        # Extract metrics
-                        final_transition = trajectory[-1]
-                        final_reward = final_transition[2]
-                        is_done = final_transition[4]
+                        # Track metrics
+                        batch_wins.append(1 if agent_won else 0)
+                        batch_rewards.append(final_reward)
+                        batch_lengths.append(episode_length)
 
-                        if is_done:
-                            agent_won = 1 if final_reward > 0 else 0
-                            batch_wins.append(agent_won)
-                            batch_rewards.append(final_reward)
-                            batch_lengths.append(len(trajectory))
+                        # Track opponent-specific stats
+                        opponent_name_map = {
+                            "random": "Random",
+                            "heuristic": "Heuristic",
+                            "self_play": "Self-Play",
+                        }
+                        opponent_name = opponent_name_map.get(opponent_type, "Unknown")
 
-                            # Track opponent stats (assume uniform distribution for now)
-                            opponent_name = "Mixed"  # Simplified for parallel
-                            if opponent_name not in opponent_stats:
-                                opponent_stats[opponent_name] = {"wins": 0, "games": 0}
-                            opponent_stats[opponent_name]["games"] += 1
-                            if agent_won:
-                                opponent_stats[opponent_name]["wins"] += 1
+                        if opponent_name not in opponent_stats:
+                            opponent_stats[opponent_name] = {
+                                "wins": 0,
+                                "games": 0,
+                                "rewards": [],
+                            }
+                        opponent_stats[opponent_name]["games"] += 1
+                        opponent_stats[opponent_name]["rewards"].append(final_reward)
+                        if agent_won:
+                            opponent_stats[opponent_name]["wins"] += 1
 
             # Add to history
             wins.extend(batch_wins)
@@ -267,17 +280,25 @@ def train_dqn(
                     np.mean(episode_lengths[-log_interval:]) if episode_lengths else 0
                 )
 
-                gpu_mem_alloc = (
-                    torch.cuda.memory_allocated() / 1e9
-                    if torch.cuda.is_available()
-                    else 0
+                recent_avg_reward = (
+                    np.mean(avg_rewards[-log_interval:]) if avg_rewards else 0
                 )
 
-                gpu_mem_max = (
-                    torch.cuda.max_memory_allocated() / 1e9
-                    if torch.cuda.is_available()
-                    else 0
-                )
+                # Calculate per-opponent win rates from recent games
+                def calculate_recent_opponent_winrate(opponent_name):
+                    if (
+                        opponent_name not in opponent_stats
+                        or opponent_stats[opponent_name]["games"] == 0
+                    ):
+                        return 0.0
+                    return (
+                        opponent_stats[opponent_name]["wins"]
+                        / opponent_stats[opponent_name]["games"]
+                    )
+
+                win_rate_random = calculate_recent_opponent_winrate("Random")
+                win_rate_heuristic = calculate_recent_opponent_winrate("Heuristic")
+                win_rate_self_play = calculate_recent_opponent_winrate("Self-Play")
 
                 with open(log_file, "a", newline="") as f:
                     writer = csv.writer(f)
@@ -285,13 +306,15 @@ def train_dqn(
                         [
                             total_episodes,
                             recent_win_rate,
+                            win_rate_random,
+                            win_rate_heuristic,
+                            win_rate_self_play,
+                            recent_avg_reward,
                             recent_avg_length,
                             agent.epsilon,
                             len(agent.replay_buffer),
                             agent.steps_done,
                             datetime.now().isoformat(),
-                            gpu_mem_alloc,
-                            gpu_mem_max,
                         ]
                     )
 
@@ -302,20 +325,29 @@ def train_dqn(
                 avg_length = (
                     np.mean(episode_lengths[-eval_interval:]) if episode_lengths else 0
                 )
+                avg_reward = np.mean(avg_rewards[-eval_interval:]) if avg_rewards else 0
 
                 print(f"\n\nEpisode {total_episodes}/{n_episodes_actual}")
-                print(f"  Win Rate (last {eval_interval}): {win_rate:.2%}")
+                print(f"  Overall Win Rate (last {eval_interval}): {win_rate:.2%}")
+                print(f"  Avg Reward (last {eval_interval}): {avg_reward:.3f}")
                 print(f"  Avg Episode Length: {avg_length:.1f}")
                 print(f"  Replay Buffer Size: {len(agent.replay_buffer)}")
                 print(f"  Epsilon: {agent.epsilon:.4f}")
                 print(f"  Total Steps: {agent.steps_done}")
 
-                print("\n  Opponent Win Rates (all-time):")
-                for opp_name, stats in opponent_stats.items():
-                    if stats["games"] > 0:
+                print("\n  Win Rates by Opponent (all-time):")
+                for opp_name in ["Random", "Heuristic", "Self-Play"]:
+                    if (
+                        opp_name in opponent_stats
+                        and opponent_stats[opp_name]["games"] > 0
+                    ):
+                        stats = opponent_stats[opp_name]
                         opp_wr = stats["wins"] / stats["games"]
+                        avg_opp_reward = (
+                            np.mean(stats["rewards"]) if stats["rewards"] else 0
+                        )
                         print(
-                            f"    vs {opp_name}: {opp_wr:.2%} ({stats['wins']}/{stats['games']})"
+                            f"    vs {opp_name:12s}: {opp_wr:.2%} (W:{stats['wins']}/G:{stats['games']}) | Avg Reward: {avg_opp_reward:.3f}"
                         )
                 print(f"  Snapshots saved: {len(opponent_manager.snapshots)}")
 

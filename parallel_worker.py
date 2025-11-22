@@ -218,6 +218,14 @@ def rollout_worker(
                 True,
             )
 
-        all_trajectories.append(trajectory)
+        all_trajectories.append(
+            {
+                "trajectory": trajectory,
+                "opponent_type": opponent_type,
+                "agent_won": agent_won if len(trajectory) > 0 else False,
+                "episode_length": episode_length,
+                "final_reward": final_reward if len(trajectory) > 0 else 0,
+            }
+        )
 
     return all_trajectories
