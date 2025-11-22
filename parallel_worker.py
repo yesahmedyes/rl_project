@@ -5,6 +5,7 @@ import torch
 from ludo import Ludo
 from policy_random import Policy_Random
 from policy_heuristic import Policy_Heuristic
+from milestone2 import PolicyMilestone2
 from models import DuelingDQNNetwork
 
 
@@ -130,6 +131,7 @@ def rollout_worker(
     # Create opponent policies
     random_policy = Policy_Random()
     heuristic_policy = Policy_Heuristic()
+    milestone2_policy = PolicyMilestone2()
 
     # Create self-play policy if snapshots available (CPU only)
     if opponent_snapshots:
@@ -142,13 +144,15 @@ def rollout_worker(
 
     for ep_idx in range(num_episodes):
         opponent_type = np.random.choice(
-            ["random", "heuristic", "self_play"], p=[0.5, 0.4, 0.1]
+            ["random", "heuristic", "milestone2", "self_play"], p=[0.45, 0.35, 0.1, 0.1]
         )
 
         if opponent_type == "random":
             opponent_policy = random_policy
         elif opponent_type == "heuristic":
             opponent_policy = heuristic_policy
+        elif opponent_type == "milestone2":
+            opponent_policy = milestone2_policy
         else:
             if self_play_policy is not None:
                 opponent_policy = self_play_policy

@@ -1,6 +1,7 @@
 from policy_dqn import Policy_DQN
 from policy_random import Policy_Random
 from policy_heuristic import Policy_Heuristic
+from milestone2 import PolicyMilestone2
 
 import numpy as np
 import copy
@@ -14,6 +15,7 @@ class OpponentManager:
 
         self.random_policy = Policy_Random()
         self.heuristic_policy = Policy_Heuristic()
+        self.milestone2_policy = PolicyMilestone2()
 
         self.self_play_agent = Policy_DQN(
             training_mode=False,
@@ -32,7 +34,7 @@ class OpponentManager:
 
     def select_opponent(self):
         opponent_type = np.random.choice(
-            ["random", "heuristic", "self_play"], p=[0.5, 0.4, 0.1]
+            ["random", "heuristic", "milestone2", "self_play"], p=[0.45, 0.35, 0.1, 0.1]
         )
 
         if opponent_type == "random":
@@ -40,6 +42,9 @@ class OpponentManager:
 
         elif opponent_type == "heuristic":
             return self.heuristic_policy, "Heuristic"
+
+        elif opponent_type == "milestone2":
+            return self.milestone2_policy, "Milestone2"
 
         else:
             if self.snapshots:

@@ -100,6 +100,7 @@ def train_dqn(
     opponent_stats = {
         "Random": {"wins": 0, "games": 0, "rewards": []},
         "Heuristic": {"wins": 0, "games": 0, "rewards": []},
+        "Milestone2": {"wins": 0, "games": 0, "rewards": []},
         "Self-Play": {"wins": 0, "games": 0, "rewards": []},
     }
 
@@ -117,6 +118,7 @@ def train_dqn(
                 "win_rate_overall",
                 "win_rate_vs_random",
                 "win_rate_vs_heuristic",
+                "win_rate_vs_milestone2",
                 "win_rate_vs_self_play",
                 "avg_reward",
                 "avg_length",
@@ -223,6 +225,7 @@ def train_dqn(
                         opponent_name_map = {
                             "random": "Random",
                             "heuristic": "Heuristic",
+                            "milestone2": "Milestone2",
                             "self_play": "Self-Play",
                         }
                         opponent_name = opponent_name_map.get(opponent_type, "Unknown")
@@ -298,6 +301,7 @@ def train_dqn(
 
                 win_rate_random = calculate_recent_opponent_winrate("Random")
                 win_rate_heuristic = calculate_recent_opponent_winrate("Heuristic")
+                win_rate_milestone2 = calculate_recent_opponent_winrate("Milestone2")
                 win_rate_self_play = calculate_recent_opponent_winrate("Self-Play")
 
                 with open(log_file, "a", newline="") as f:
@@ -308,6 +312,7 @@ def train_dqn(
                             recent_win_rate,
                             win_rate_random,
                             win_rate_heuristic,
+                            win_rate_milestone2,
                             win_rate_self_play,
                             recent_avg_reward,
                             recent_avg_length,
@@ -336,7 +341,7 @@ def train_dqn(
                 print(f"  Total Steps: {agent.steps_done}")
 
                 print("\n  Win Rates by Opponent (all-time):")
-                for opp_name in ["Random", "Heuristic", "Self-Play"]:
+                for opp_name in ["Random", "Heuristic", "Milestone2", "Self-Play"]:
                     if (
                         opp_name in opponent_stats
                         and opponent_stats[opp_name]["games"] > 0
