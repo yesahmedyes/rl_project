@@ -1,9 +1,6 @@
-import os
 import random
 import numpy as np
-
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
+import os
 import torch
 from ludo import Ludo
 from policy_random import Policy_Random
@@ -13,11 +10,7 @@ from models import DuelingDQNNetwork
 
 class InferencePolicy:
     def __init__(self, weights, state_dim=12, max_actions=12, device="cpu"):
-        # FORCE CPU usage - workers should never use GPU
-        if isinstance(device, str):
-            self.device = torch.device("cpu")
-        else:
-            self.device = device
+        self.device = torch.device("cpu")
 
         self.state_dim = state_dim
         self.max_actions = max_actions
@@ -28,12 +21,13 @@ class InferencePolicy:
             state_dim, hidden_dim=256, max_actions=max_actions
         )
 
-        # Load weights on CPU
-        self.policy_net.load_state_dict(weights["policy_net"])
-        self.policy_net = self.policy_net.cpu()
+        state_dict = {}
+        for key, value in weights["policy_net"].items():
+            state_dict[key] = value.cpu() if value.is_cuda else value
+
+        self.policy_net.load_state_dict(state_dict)
         self.policy_net.eval()
 
-        # Ensure no gradients are tracked (saves memory)
         for param in self.policy_net.parameters():
             param.requires_grad = False
 
@@ -124,6 +118,8 @@ class InferencePolicy:
 def rollout_worker(
     worker_id, num_episodes, weights, agent_player_positions, opponent_snapshots
 ):
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
     # Each worker gets different seed
     np.random.seed(worker_id * 1000 + np.random.randint(1000))
     random.seed(worker_id * 1000 + np.random.randint(1000))
@@ -131,8 +127,6 @@ def rollout_worker(
     # Create environment
     env = Ludo()
 
-    # Create inference policy (MUST be CPU only for workers to avoid GPU memory leak)
-    # Note: CUDA is already disabled via environment variable at module import
     agent_policy = InferencePolicy(weights, device=torch.device("cpu"))
 
     # Create opponent policies

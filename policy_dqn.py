@@ -364,7 +364,8 @@ class Policy_DQN:
 
     def get_weights(self):
         cpu_state_dict = {
-            key: value.cpu() for key, value in self.policy_net.state_dict().items()
+            key: value.cpu().detach().clone()
+            for key, value in self.policy_net.state_dict().items()
         }
         return {
             "policy_net": cpu_state_dict,
