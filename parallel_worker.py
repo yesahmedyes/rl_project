@@ -195,20 +195,28 @@ def rollout_worker(
             action_space = env.get_action_space()
             action = policies[player_turn].get_action(state, action_space)
 
-            # Encode state before step
-            if player_turn == agent_player:
+            # Encode state before step (only if agent's turn and action exists)
+            if player_turn == agent_player and action is not None:
                 state_encoded = agent_policy.encode_state(state)
                 dice_idx, goti_idx = action
                 action_idx = dice_idx * 4 + goti_idx
                 action_idx = max(0, min(action_idx, agent_policy.max_actions - 1))
+            else:
+                action_idx = None
+                state_encoded = None
 
             next_state = env.step(action)
             terminated = next_state[3]
             next_player_turn = next_state[4]
             episode_length += 1
 
-            # Store transition if agent's turn
-            if player_turn == agent_player and not terminated:
+            # Store transition if agent's turn and action was valid
+            if (
+                player_turn == agent_player
+                and not terminated
+                and action is not None
+                and state_encoded is not None
+            ):
                 next_state_encoded = agent_policy.encode_state(next_state)
                 reward = -0.0001  # Small step penalty
                 trajectory.append(
@@ -219,30 +227,23 @@ def rollout_worker(
             player_turn = next_player_turn
 
         # Add final transition with terminal reward
-        if trajectory:
+        if len(trajectory) > 0:
             winner = state[4]
             agent_won = winner == agent_player
             final_reward = 1.0 if agent_won else -1.0
 
             # Replace last transition with terminal state
-            if len(trajectory) > 0:
-                last_state, last_action, _, _, _ = trajectory[-1]
-                next_state_encoded = np.zeros(agent_policy.state_dim, dtype=np.float32)
-                trajectory[-1] = (
-                    last_state,
-                    last_action,
-                    final_reward,
-                    next_state_encoded,
-                    True,
-                )
-            else:
-                # Edge case: episode ended immediately
-                state_encoded = agent_policy.encode_state(state)
-                next_state_encoded = np.zeros(agent_policy.state_dim, dtype=np.float32)
-                trajectory.append(
-                    (state_encoded, 0, final_reward, next_state_encoded, True)
-                )
+            last_state, last_action, _, _, _ = trajectory[-1]
+            next_state_encoded = np.zeros(agent_policy.state_dim, dtype=np.float32)
+            trajectory[-1] = (
+                last_state,
+                last_action,
+                final_reward,
+                next_state_encoded,
+                True,
+            )
 
+        # Add trajectory (even if empty - still tracks episode completion)
         all_trajectories.append(trajectory)
 
     return all_trajectories
