@@ -2,7 +2,7 @@ import random
 import numpy as np
 
 import torch
-from ludo import Ludo
+from ludo import Ludo, STARTING, DESTINATION, SAFE_SQUARES
 from policy_random import Policy_Random
 from policy_heuristic import Policy_Heuristic
 from milestone2 import Policy_Milestone2
@@ -10,7 +10,7 @@ from models import DuelingDQNNetwork
 
 
 class InferencePolicy:
-    def __init__(self, weights, state_dim=12, max_actions=12, device="cpu"):
+    def __init__(self, weights, state_dim=28, max_actions=12, device="cpu"):
         self.device = torch.device("cpu")
 
         self.state_dim = state_dim
@@ -53,8 +53,81 @@ class InferencePolicy:
             for i, d in enumerate(dice_roll[:3]):
                 dice_normalized[i] = d / 6.0
 
+        # 1. Distance to goal for each of my pieces (4 features)
+        my_distances = [
+            (DESTINATION - pos) / 57.0 if pos >= 0 else 1.0 for pos in my_gotis
+        ]
+
+        # 2. Count pieces at home for both players (2 features)
+        my_at_home = sum(1 for pos in my_gotis if pos == STARTING) / 4.0
+        opp_at_home = sum(1 for pos in opp_gotis if pos == STARTING) / 4.0
+
+        # 3. Count pieces at destination for both players (2 features)
+        my_at_dest = sum(1 for pos in my_gotis if pos == DESTINATION) / 4.0
+        opp_at_dest = sum(1 for pos in opp_gotis if pos == DESTINATION) / 4.0
+
+        # 4. Count pieces on safe squares for both players (2 features)
+        my_on_safe = sum(1 for pos in my_gotis if pos in SAFE_SQUARES) / 4.0
+        opp_on_safe = sum(1 for pos in opp_gotis if pos in SAFE_SQUARES) / 4.0
+
+        # 5. Average progress for both players (2 features)
+        def calc_progress(positions):
+            active = [p for p in positions if p >= 0]
+            if active:
+                return sum(p for p in active) / (len(active) * DESTINATION)
+            return 0.0
+
+        my_avg_progress = calc_progress(my_gotis)
+        opp_avg_progress = calc_progress(opp_gotis)
+
+        # 6. Pieces in danger - my pieces on unsafe squares with opponent nearby (1 feature)
+        pieces_in_danger = 0
+
+        for my_pos in my_gotis:
+            if my_pos >= 0 and my_pos not in SAFE_SQUARES:
+                # Check if any opponent within striking distance (1-6 squares behind)
+                for opp_pos in opp_gotis:
+                    if opp_pos >= 0 and 1 <= (my_pos - opp_pos) <= 6:
+                        pieces_in_danger += 1
+                        break
+
+        pieces_in_danger_norm = pieces_in_danger / 4.0
+
+        # 7. Capture opportunities - my pieces that could capture opponent (1 feature)
+        capture_opportunities = 0
+
+        for my_pos in my_gotis:
+            if my_pos >= 0:
+                # Check if any opponent within striking distance ahead
+                for opp_pos in opp_gotis:
+                    if opp_pos >= 0 and opp_pos not in SAFE_SQUARES:
+                        if 1 <= (opp_pos - my_pos) <= 6:
+                            capture_opportunities += 1
+                            break
+
+        capture_opportunities_norm = capture_opportunities / 4.0
+
+        # 8. Can move out of home - have a 6 in dice (1 feature)
+        has_six = 1.0 if (dice_roll and 6 in dice_roll) else 0.0
+
+        # 9. Number of dice available (1 feature)
+        num_dice = len(dice_roll) / 3.0 if dice_roll else 0.0
+
+        # Combine all features (total: 28 features)
         state_vector = (
-            my_positions + opp_positions + dice_normalized + [float(player_turn)]
+            my_positions  # 4 features
+            + opp_positions  # 4 features
+            + dice_normalized  # 3 features
+            + [float(player_turn)]  # 1 feature
+            + my_distances  # 4 features
+            + [my_at_home, opp_at_home]  # 2 features
+            + [my_at_dest, opp_at_dest]  # 2 features
+            + [my_on_safe, opp_on_safe]  # 2 features
+            + [my_avg_progress, opp_avg_progress]  # 2 features
+            + [pieces_in_danger_norm]  # 1 feature
+            + [capture_opportunities_norm]  # 1 feature
+            + [has_six]  # 1 feature
+            + [num_dice]  # 1 feature
         )
 
         return np.array(state_vector, dtype=np.float32)
