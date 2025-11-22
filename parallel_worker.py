@@ -1,5 +1,9 @@
+import os
 import random
 import numpy as np
+
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 import torch
 from ludo import Ludo
 from policy_random import Policy_Random
@@ -9,18 +13,29 @@ from models import DuelingDQNNetwork
 
 class InferencePolicy:
     def __init__(self, weights, state_dim=12, max_actions=12, device="cpu"):
-        self.device = torch.device("cpu")
+        # FORCE CPU usage - workers should never use GPU
+        if isinstance(device, str):
+            self.device = torch.device("cpu")
+        else:
+            self.device = device
+
         self.state_dim = state_dim
         self.max_actions = max_actions
         self.epsilon = weights["epsilon"]
 
+        # Create network on CPU only
         self.policy_net = DuelingDQNNetwork(
             state_dim, hidden_dim=256, max_actions=max_actions
-        ).to(self.device)
+        )
 
+        # Load weights on CPU
         self.policy_net.load_state_dict(weights["policy_net"])
         self.policy_net = self.policy_net.cpu()
         self.policy_net.eval()
+
+        # Ensure no gradients are tracked (saves memory)
+        for param in self.policy_net.parameters():
+            param.requires_grad = False
 
     def encode_state(self, state):
         gotis_red, gotis_yellow, dice_roll, _, player_turn = state
@@ -116,17 +131,18 @@ def rollout_worker(
     # Create environment
     env = Ludo()
 
-    # Create inference policy (CPU only for workers)
-    agent_policy = InferencePolicy(weights, device="cpu")
+    # Create inference policy (MUST be CPU only for workers to avoid GPU memory leak)
+    # Note: CUDA is already disabled via environment variable at module import
+    agent_policy = InferencePolicy(weights, device=torch.device("cpu"))
 
     # Create opponent policies
     random_policy = Policy_Random()
     heuristic_policy = Policy_Heuristic()
 
-    # Create self-play policy if snapshots available
+    # Create self-play policy if snapshots available (CPU only)
     if opponent_snapshots:
         snapshot_weights = random.choice(opponent_snapshots)
-        self_play_policy = InferencePolicy(snapshot_weights, device="cpu")
+        self_play_policy = InferencePolicy(snapshot_weights, device=torch.device("cpu"))
     else:
         self_play_policy = None
 

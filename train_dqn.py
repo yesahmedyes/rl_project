@@ -473,7 +473,7 @@ if __name__ == "__main__":
 
     try:
         # Run until interrupted (essentially infinite)
-        agent = train_dqn(n_episodes=100000)
+        agent = train_dqn(n_episodes=100000, use_prioritized_replay=False)
 
     except KeyboardInterrupt:
         print("\n\n✅ Training interrupted gracefully!")

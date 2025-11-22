@@ -129,20 +129,32 @@ class ReplayBuffer:
 
 
 class PrioritizedReplayBuffer:
-    def __init__(self, capacity=500000, alpha=0.6, beta=0.4, beta_increment=0.001):
+    def __init__(
+        self, capacity=500000, alpha=0.6, beta=0.4, beta_increment=0.001, device=None
+    ):
         self.capacity = capacity
         self.alpha = alpha
         self.beta = beta
         self.beta_increment = beta_increment
         self.max_beta = 1.0
 
+        # Use CUDA if available
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = device
+
+        # Store experiences on CPU (standard practice for large buffers)
         self.buffer = []
-        self.priorities = np.zeros((capacity,), dtype=np.float32)
+        # Store priorities on GPU for fast sampling
+        self.priorities = torch.zeros(capacity, dtype=torch.float32, device=self.device)
         self.position = 0
         self.size = 0
 
     def push(self, state, action, reward, next_state, done):
-        max_priority = self.priorities.max() if self.size > 0 else 1.0
+        max_priority = (
+            self.priorities[: self.size].max().item() if self.size > 0 else 1.0
+        )
 
         if self.size < self.capacity:
             self.buffer.append((state, action, reward, next_state, done))
@@ -157,19 +169,27 @@ class PrioritizedReplayBuffer:
         if self.size == 0:
             raise ValueError("Cannot sample from empty buffer")
 
+        # Use GPU for priority calculations
         priorities = self.priorities[: self.size]
         probabilities = priorities**self.alpha
-        probabilities /= probabilities.sum()
+        probabilities = probabilities / probabilities.sum()
 
+        # Move to CPU for numpy random choice (faster for small arrays)
+        probabilities_cpu = probabilities.cpu().numpy()
         indices = np.random.choice(
-            self.size, batch_size, p=probabilities, replace=False
+            self.size, batch_size, p=probabilities_cpu, replace=False
         )
 
-        weights = (self.size * probabilities[indices]) ** (-self.beta)
-        weights /= weights.max()
+        # Calculate importance sampling weights on GPU
+        indices_tensor = torch.from_numpy(indices).to(self.device)
+        selected_probs = probabilities[indices_tensor]
+        weights = (self.size * selected_probs) ** (-self.beta)
+        weights = weights / weights.max()
+        weights_cpu = weights.cpu().numpy()
 
         self.beta = min(self.max_beta, self.beta + self.beta_increment)
 
+        # Sample experiences from buffer
         samples = [self.buffer[idx] for idx in indices]
         states, actions, rewards, next_states, dones = zip(*samples)
 
@@ -180,12 +200,17 @@ class PrioritizedReplayBuffer:
             np.array(next_states),
             np.array(dones, dtype=np.float32),
             indices,
-            np.array(weights, dtype=np.float32),
+            weights_cpu,
         )
 
     def update_priorities(self, indices, priorities):
-        for idx, priority in zip(indices, priorities):
-            self.priorities[idx] = priority + 1e-5
+        # Convert to tensors if needed and update on GPU
+        if isinstance(priorities, np.ndarray):
+            priorities = torch.from_numpy(priorities).to(self.device)
+        if isinstance(indices, np.ndarray):
+            indices = torch.from_numpy(indices).to(self.device)
+
+        self.priorities[indices] = priorities + 1e-5
 
     def __len__(self):
         return self.size

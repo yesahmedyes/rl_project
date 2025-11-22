@@ -58,7 +58,7 @@ class Policy_DQN:
 
         if use_prioritized_replay:
             self.replay_buffer = PrioritizedReplayBuffer(
-                buffer_size, alpha=per_alpha, beta=per_beta
+                buffer_size, alpha=per_alpha, beta=per_beta, device=self.device
             )
         else:
             self.replay_buffer = ReplayBuffer(buffer_size)
