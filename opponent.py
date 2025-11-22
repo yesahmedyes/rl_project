@@ -1,7 +1,7 @@
 from policy_dqn import Policy_DQN
 from policy_random import Policy_Random
 from policy_heuristic import Policy_Heuristic
-from milestone2 import PolicyMilestone2
+from milestone2 import Policy_Milestone2
 
 import numpy as np
 import copy
@@ -15,7 +15,7 @@ class OpponentManager:
 
         self.random_policy = Policy_Random()
         self.heuristic_policy = Policy_Heuristic()
-        self.milestone2_policy = PolicyMilestone2()
+        self.milestone2_policy = Policy_Milestone2()
 
         self.self_play_agent = Policy_DQN(
             training_mode=False,

@@ -5,7 +5,7 @@ import torch
 from ludo import Ludo
 from policy_random import Policy_Random
 from policy_heuristic import Policy_Heuristic
-from milestone2 import PolicyMilestone2
+from milestone2 import Policy_Milestone2
 from models import DuelingDQNNetwork
 
 
@@ -131,7 +131,7 @@ def rollout_worker(
     # Create opponent policies
     random_policy = Policy_Random()
     heuristic_policy = Policy_Heuristic()
-    milestone2_policy = PolicyMilestone2()
+    milestone2_policy = Policy_Milestone2()
 
     # Create self-play policy if snapshots available (CPU only)
     if opponent_snapshots:

@@ -41,7 +41,7 @@ def train_dqn(
     per_beta=0.4,
     num_workers=None,
     episodes_per_batch=10,
-    learning_steps_per_batch=50,
+    learning_steps_per_batch=20,
 ):
     global interrupted
 
