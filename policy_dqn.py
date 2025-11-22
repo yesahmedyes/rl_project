@@ -11,7 +11,7 @@ import torch.nn.functional as F
 class AttentionLayer(nn.Module):
     """Attention mechanism over gotis to focus on relevant pieces"""
 
-    def __init__(self, input_dim, hidden_dim=64):
+    def __init__(self, input_dim, hidden_dim=128):
         super(AttentionLayer, self).__init__()
         self.query = nn.Linear(input_dim, hidden_dim)
         self.key = nn.Linear(input_dim, hidden_dim)
@@ -60,7 +60,7 @@ class DuelingDQNNetwork(nn.Module):
     Q(s,a) = V(s) + (A(s,a) - mean(A(s,a)))
     """
 
-    def __init__(self, state_dim=12, hidden_dim=128, max_actions=12):
+    def __init__(self, state_dim=12, hidden_dim=256, max_actions=12):
         super(DuelingDQNNetwork, self).__init__()
 
         self.state_dim = state_dim
@@ -68,7 +68,7 @@ class DuelingDQNNetwork(nn.Module):
 
         # Attention over gotis (8 gotis: 4 mine + 4 opponent)
         # Each goti has 1 feature (normalized position)
-        self.goti_attention = AttentionLayer(input_dim=1, hidden_dim=64)
+        self.goti_attention = AttentionLayer(input_dim=1, hidden_dim=hidden_dim // 2)
 
         # Feature extraction layers
         # Input: 12 features (8 goti positions + 3 dice + 1 turn)
@@ -77,17 +77,21 @@ class DuelingDQNNetwork(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
 
         # Combine attention with FC features
-        self.feature_combine = nn.Linear(hidden_dim + 64, hidden_dim)
+        self.feature_combine = nn.Linear(hidden_dim + (hidden_dim // 2), hidden_dim)
 
         # Dueling streams
         # Value stream: estimates V(s)
         self.value_stream = nn.Sequential(
-            nn.Linear(hidden_dim, 64), nn.ReLU(), nn.Linear(64, 1)
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, 1),
         )
 
         # Advantage stream: estimates A(s,a)
         self.advantage_stream = nn.Sequential(
-            nn.Linear(hidden_dim, 64), nn.ReLU(), nn.Linear(64, max_actions)
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, max_actions),
         )
 
         # Initialize weights
@@ -306,10 +310,10 @@ class Policy_DQN:
 
         # Networks - Using Dueling DQN with Attention
         self.policy_net = DuelingDQNNetwork(
-            self.state_dim, hidden_dim=128, max_actions=self.max_actions
+            self.state_dim, hidden_dim=256, max_actions=self.max_actions
         ).to(self.device)
         self.target_net = DuelingDQNNetwork(
-            self.state_dim, hidden_dim=128, max_actions=self.max_actions
+            self.state_dim, hidden_dim=256, max_actions=self.max_actions
         ).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
