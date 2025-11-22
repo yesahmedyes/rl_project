@@ -1,6 +1,6 @@
 import random
 import numpy as np
-import os
+
 import torch
 from ludo import Ludo
 from policy_random import Policy_Random
@@ -118,8 +118,6 @@ class InferencePolicy:
 def rollout_worker(
     worker_id, num_episodes, weights, agent_player_positions, opponent_snapshots
 ):
-    os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
     # Each worker gets different seed
     np.random.seed(worker_id * 1000 + np.random.randint(1000))
     random.seed(worker_id * 1000 + np.random.randint(1000))
