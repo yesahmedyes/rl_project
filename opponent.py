@@ -32,7 +32,7 @@ class OpponentManager:
 
     def select_opponent(self):
         opponent_type = np.random.choice(
-            ["random", "heuristic", "self_play"], p=[0.25, 0.25, 0.25, 0.25]
+            ["random", "heuristic", "self_play"], p=[0.5, 0.4, 0.1]
         )
 
         if opponent_type == "random":
