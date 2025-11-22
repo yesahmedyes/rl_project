@@ -9,17 +9,17 @@ from models import DuelingDQNNetwork
 
 class InferencePolicy:
     def __init__(self, weights, state_dim=12, max_actions=12, device="cpu"):
-        self.device = torch.device(device)
+        self.device = torch.device("cpu")
         self.state_dim = state_dim
         self.max_actions = max_actions
         self.epsilon = weights["epsilon"]
 
-        # Create network and load weights
         self.policy_net = DuelingDQNNetwork(
             state_dim, hidden_dim=256, max_actions=max_actions
         ).to(self.device)
 
         self.policy_net.load_state_dict(weights["policy_net"])
+        self.policy_net = self.policy_net.cpu()
         self.policy_net.eval()
 
     def encode_state(self, state):

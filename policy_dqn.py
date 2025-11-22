@@ -363,8 +363,11 @@ class Policy_DQN:
         self.last_action_space = None
 
     def get_weights(self):
+        cpu_state_dict = {
+            key: value.cpu() for key, value in self.policy_net.state_dict().items()
+        }
         return {
-            "policy_net": self.policy_net.state_dict(),
+            "policy_net": cpu_state_dict,
             "epsilon": self.epsilon,
         }
 

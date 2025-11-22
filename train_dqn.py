@@ -41,7 +41,7 @@ def train_dqn(
     per_beta=0.4,
     num_workers=None,
     episodes_per_batch=10,
-    learning_steps_per_batch=None,
+    learning_steps_per_batch=100,
 ):
     global interrupted
 
@@ -49,10 +49,6 @@ def train_dqn(
 
     if num_workers is None:
         num_workers = max(1, mp.cpu_count() - 2)  # Leave 2 cores for system
-
-    # Learning steps: how many gradient updates per batch
-    if learning_steps_per_batch is None:
-        learning_steps_per_batch = num_workers * episodes_per_batch
 
     print("\n🚀 Parallel Training Configuration:")
     print(f"   CPU Cores Available: {mp.cpu_count()}")
