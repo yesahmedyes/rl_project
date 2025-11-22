@@ -5,6 +5,7 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 from models import DuelingDQNNetwork, PrioritizedReplayBuffer, ReplayBuffer
+from ludo import STARTING, DESTINATION, SAFE_SQUARES
 
 
 class Policy_DQN:
@@ -16,7 +17,7 @@ class Policy_DQN:
         learning_rate=0.001,
         gamma=0.99,
         batch_size=2048,
-        buffer_size=100000,
+        buffer_size=200000,
         target_update_freq=1000,
         training_mode=False,
         device=None,
@@ -41,14 +42,14 @@ class Policy_DQN:
         else:
             self.device = device
 
-        self.state_dim = 12  # 4 my gotis + 4 opp gotis + 3 dice + 1 player turn
+        self.state_dim = 28  # Enhanced state with strategic features
         self.max_actions = 12  # Max possible actions (3 dice × 4 gotis)
 
         self.policy_net = DuelingDQNNetwork(
-            self.state_dim, hidden_dim=256, max_actions=self.max_actions
+            self.state_dim, hidden_dim=128, max_actions=self.max_actions
         ).to(self.device)
         self.target_net = DuelingDQNNetwork(
-            self.state_dim, hidden_dim=256, max_actions=self.max_actions
+            self.state_dim, hidden_dim=128, max_actions=self.max_actions
         ).to(self.device)
 
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -96,9 +97,81 @@ class Policy_DQN:
             for i, d in enumerate(dice_roll[:3]):
                 dice_normalized[i] = d / 6.0
 
-        # Combine all features
+        # 1. Distance to goal for each of my pieces (4 features)
+        my_distances = [
+            (DESTINATION - pos) / 57.0 if pos >= 0 else 1.0 for pos in my_gotis
+        ]
+
+        # 2. Count pieces at home for both players (2 features)
+        my_at_home = sum(1 for pos in my_gotis if pos == STARTING) / 4.0
+        opp_at_home = sum(1 for pos in opp_gotis if pos == STARTING) / 4.0
+
+        # 3. Count pieces at destination for both players (2 features)
+        my_at_dest = sum(1 for pos in my_gotis if pos == DESTINATION) / 4.0
+        opp_at_dest = sum(1 for pos in opp_gotis if pos == DESTINATION) / 4.0
+
+        # 4. Count pieces on safe squares for both players (2 features)
+        my_on_safe = sum(1 for pos in my_gotis if pos in SAFE_SQUARES) / 4.0
+        opp_on_safe = sum(1 for pos in opp_gotis if pos in SAFE_SQUARES) / 4.0
+
+        # 5. Average progress for both players (2 features)
+        def calc_progress(positions):
+            active = [p for p in positions if p >= 0]
+            if active:
+                return sum(p for p in active) / (len(active) * DESTINATION)
+            return 0.0
+
+        my_avg_progress = calc_progress(my_gotis)
+        opp_avg_progress = calc_progress(opp_gotis)
+
+        # 6. Pieces in danger - my pieces on unsafe squares with opponent nearby (1 feature)
+        pieces_in_danger = 0
+
+        for my_pos in my_gotis:
+            if my_pos >= 0 and my_pos not in SAFE_SQUARES:
+                # Check if any opponent within striking distance (1-6 squares behind)
+                for opp_pos in opp_gotis:
+                    if opp_pos >= 0 and 1 <= (my_pos - opp_pos) <= 6:
+                        pieces_in_danger += 1
+                        break
+
+        pieces_in_danger_norm = pieces_in_danger / 4.0
+
+        # 7. Capture opportunities - my pieces that could capture opponent (1 feature)
+        capture_opportunities = 0
+
+        for my_pos in my_gotis:
+            if my_pos >= 0:
+                # Check if any opponent within striking distance ahead
+                for opp_pos in opp_gotis:
+                    if opp_pos >= 0 and opp_pos not in SAFE_SQUARES:
+                        if 1 <= (opp_pos - my_pos) <= 6:
+                            capture_opportunities += 1
+                            break
+
+        capture_opportunities_norm = capture_opportunities / 4.0
+
+        # 8. Can move out of home - have a 6 in dice (1 feature)
+        has_six = 1.0 if (dice_roll and 6 in dice_roll) else 0.0
+
+        # 9. Number of dice available (1 feature)
+        num_dice = len(dice_roll) / 3.0 if dice_roll else 0.0
+
+        # Combine all features (total: 28 features)
         state_vector = (
-            my_positions + opp_positions + dice_normalized + [float(player_turn)]
+            my_positions  # 4 features
+            + opp_positions  # 4 features
+            + dice_normalized  # 3 features
+            + [float(player_turn)]  # 1 feature
+            + my_distances  # 4 features
+            + [my_at_home, opp_at_home]  # 2 features
+            + [my_at_dest, opp_at_dest]  # 2 features
+            + [my_on_safe, opp_on_safe]  # 2 features
+            + [my_avg_progress, opp_avg_progress]  # 2 features
+            + [pieces_in_danger_norm]  # 1 feature
+            + [capture_opportunities_norm]  # 1 feature
+            + [has_six]  # 1 feature
+            + [num_dice]  # 1 feature
         )
 
         return np.array(state_vector, dtype=np.float32)

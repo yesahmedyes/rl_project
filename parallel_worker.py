@@ -19,7 +19,7 @@ class InferencePolicy:
 
         # Create network on CPU only
         self.policy_net = DuelingDQNNetwork(
-            state_dim, hidden_dim=256, max_actions=max_actions
+            state_dim, hidden_dim=128, max_actions=max_actions
         )
 
         state_dict = {}

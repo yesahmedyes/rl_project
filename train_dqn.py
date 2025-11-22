@@ -27,7 +27,7 @@ def train_dqn(
     learning_rate=0.001,
     gamma=0.99,
     batch_size=2048,
-    buffer_size=1000000,
+    buffer_size=200000,
     target_update_freq=1000,
     save_path="policy_dqn.pth",
     eval_interval=5000,
@@ -41,7 +41,7 @@ def train_dqn(
     per_beta=0.4,
     num_workers=None,
     episodes_per_batch=10,
-    learning_steps_per_batch=20,
+    learning_steps_per_batch=50,
 ):
     global interrupted
 

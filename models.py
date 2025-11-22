@@ -38,19 +38,18 @@ class AttentionLayer(nn.Module):
 
 
 class DuelingDQNNetwork(nn.Module):
-    def __init__(self, state_dim=12, hidden_dim=256, max_actions=12):
+    def __init__(self, state_dim=28, hidden_dim=128, max_actions=12):
         super(DuelingDQNNetwork, self).__init__()
 
         self.state_dim = state_dim
         self.max_actions = max_actions
 
-        self.goti_attention = AttentionLayer(input_dim=1, hidden_dim=hidden_dim // 2)
-
+        # Feature extraction with 3-layer MLP (optimized for enhanced state)
         self.fc1 = nn.Linear(state_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, hidden_dim)
 
-        self.feature_combine = nn.Linear(hidden_dim + (hidden_dim // 2), hidden_dim)
-
+        # Dueling streams
         self.value_stream = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
@@ -72,23 +71,14 @@ class DuelingDQNNetwork(nn.Module):
                 nn.init.constant_(m.bias, 0.0)
 
     def forward(self, x, action_mask=None):
-        # Extract goti positions (first 8 features)
-        goti_features = x[:, :8]
-
-        # Apply attention over gotis
-        attended_gotis = self.goti_attention(goti_features, num_items=8)
-
-        # Standard feature extraction
+        # Simplified feature extraction (3-layer MLP)
         features = F.relu(self.fc1(x))
         features = F.relu(self.fc2(features))
-
-        # Combine attention with features
-        combined = torch.cat([features, attended_gotis], dim=1)
-        combined = F.relu(self.feature_combine(combined))
+        features = F.relu(self.fc3(features))
 
         # Dueling architecture
-        value = self.value_stream(combined)  # (batch_size, 1)
-        advantages = self.advantage_stream(combined)  # (batch_size, max_actions)
+        value = self.value_stream(features)  # (batch_size, 1)
+        advantages = self.advantage_stream(features)  # (batch_size, max_actions)
 
         # Combine value and advantages
         # Q(s,a) = V(s) + (A(s,a) - mean(A(s,a)))
