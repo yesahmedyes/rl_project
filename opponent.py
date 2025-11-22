@@ -34,7 +34,8 @@ class OpponentManager:
 
     def select_opponent(self):
         opponent_type = np.random.choice(
-            ["random", "heuristic", "milestone2", "self_play"], p=[0.45, 0.35, 0.1, 0.1]
+            ["random", "heuristic", "milestone2", "self_play"],
+            p=[0.25, 0.25, 0.25, 0.25],
         )
 
         if opponent_type == "random":

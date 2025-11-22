@@ -13,7 +13,7 @@ class Policy_DQN:
         epsilon_start=1.0,
         epsilon_end=0.05,
         epsilon_decay=0.9995,
-        learning_rate=0.005,
+        learning_rate=0.001,
         gamma=0.99,
         batch_size=2048,
         buffer_size=100000,
