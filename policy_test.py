@@ -1,7 +1,7 @@
 from ludo import *
 from tqdm import tqdm
 from policy_heuristic import Policy_Heuristic
-from milestone2 import Policy_Milestone2
+from policy_dqn import Policy_DQN
 
 
 def get_win_percentages(n, policy1, policy2):
@@ -35,6 +35,8 @@ print(
     get_win_percentages(
         10000,
         Policy_Heuristic(),
-        Policy_Milestone2(),
+        Policy_DQN(
+            policy_path="models/best_test_parallel_dqn.pth", training_mode=False
+        ),
     )
 )
