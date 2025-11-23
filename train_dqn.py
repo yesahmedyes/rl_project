@@ -21,12 +21,12 @@ interrupted = False
 
 def train_dqn(
     n_episodes=50000,
-    epsilon_start=1.0,
+    epsilon_start=0.2,
     epsilon_end=0.01,
-    epsilon_decay=0.995,
-    learning_rate=0.0005,
+    epsilon_decay=0.99,
+    learning_rate=0.0001,
     gamma=0.99,
-    batch_size=2048,
+    batch_size=1024,
     buffer_size=200000,
     target_update_freq=1000,
     save_path="policy_dqn.pth",
