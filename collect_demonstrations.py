@@ -3,6 +3,7 @@ import torch
 from tqdm import tqdm
 import os
 import pickle
+from datetime import datetime
 
 from policy_dqn import Policy_DQN
 from policy_heuristic import Policy_Heuristic
@@ -91,6 +92,9 @@ def collect_and_save_demonstrations(
 
     os.makedirs(demonstrations_dir, exist_ok=True)
 
+    # Generate timestamp for this collection run
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     opponents = [
         ("random", Policy_Random()),
         ("heuristic", Policy_Heuristic()),
@@ -108,9 +112,9 @@ def collect_and_save_demonstrations(
             device=device,
         )
 
-        # Save to separate file
+        # Save to separate file with timestamp
         filepath = os.path.join(
-            demonstrations_dir, f"{opponent_name}_demonstrations.pkl"
+            demonstrations_dir, f"{opponent_name}_demonstrations_{timestamp}.pkl"
         )
 
         save_demonstrations(expert_data, filepath)
@@ -118,8 +122,10 @@ def collect_and_save_demonstrations(
         all_data.extend(expert_data)
         print()
 
-    # Also save combined file
-    combined_filepath = os.path.join(demonstrations_dir, "all_demonstrations.pkl")
+    # Also save combined file with timestamp
+    combined_filepath = os.path.join(
+        demonstrations_dir, f"all_demonstrations_{timestamp}.pkl"
+    )
     save_demonstrations(all_data, combined_filepath)
 
     print(f"\n✅ Total demonstrations collected: {len(all_data)}")
