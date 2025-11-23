@@ -25,6 +25,7 @@ class Policy_DQN:
         use_prioritized_replay=True,
         per_alpha=0.6,
         per_beta=0.4,
+        use_noisy=True,
     ):
         self.epsilon_start = epsilon_start
         self.epsilon = epsilon_start
@@ -36,6 +37,7 @@ class Policy_DQN:
         self.training_mode = training_mode
         self.policy_path = policy_path
         self.use_prioritized_replay = use_prioritized_replay
+        self.use_noisy = use_noisy
 
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -46,10 +48,17 @@ class Policy_DQN:
         self.max_actions = 12  # Max possible actions (3 dice × 4 gotis)
 
         self.policy_net = DuelingDQNNetwork(
-            self.state_dim, hidden_dim=128, max_actions=self.max_actions
+            self.state_dim,
+            hidden_dim=128,
+            max_actions=self.max_actions,
+            use_noisy=use_noisy,
         ).to(self.device)
+
         self.target_net = DuelingDQNNetwork(
-            self.state_dim, hidden_dim=128, max_actions=self.max_actions
+            self.state_dim,
+            hidden_dim=128,
+            max_actions=self.max_actions,
+            use_noisy=use_noisy,
         ).to(self.device)
 
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -400,6 +409,7 @@ class Policy_DQN:
         return {
             "policy_net": cpu_state_dict,
             "epsilon": self.epsilon,
+            "use_noisy": self.use_noisy,
         }
 
     def set_weights(self, weights):

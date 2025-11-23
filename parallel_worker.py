@@ -94,9 +94,11 @@ class InferencePolicy:
         self.max_actions = max_actions
         self.epsilon = weights["epsilon"]
 
+        use_noisy = weights.get("use_noisy", True)
+
         # Create network on CPU only
         self.policy_net = DuelingDQNNetwork(
-            state_dim, hidden_dim=128, max_actions=max_actions
+            state_dim, hidden_dim=128, max_actions=max_actions, use_noisy=use_noisy
         )
 
         state_dict = {}

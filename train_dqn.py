@@ -43,6 +43,7 @@ def train_dqn(
     episodes_per_batch=10,
     learning_steps_per_batch=100,
     dense_rewards=True,
+    use_noisy=True,
 ):
     global interrupted
 
@@ -74,6 +75,7 @@ def train_dqn(
         use_prioritized_replay=use_prioritized_replay,
         per_alpha=per_alpha,
         per_beta=per_beta,
+        use_noisy=use_noisy,
     )
 
     start_episode = 0

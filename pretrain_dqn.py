@@ -165,6 +165,7 @@ def pretrain_dqn(
     use_scheduler=True,
     demonstrations_dir="demonstrations",
     num_workers=0,
+    use_noisy=False,
 ):
     # Set device
     if device is None:
@@ -201,6 +202,7 @@ def pretrain_dqn(
         epsilon_start=0.0,  # No exploration during pre-training
         epsilon_end=0.0,
         device=device,
+        use_noisy=use_noisy,
     )
 
     print("✅ DQN agent created\n")
@@ -246,48 +248,53 @@ if __name__ == "__main__":
         "--epochs",
         type=int,
         default=100,
-        help="Number of training epochs (default: 100)",
+        help="Number of training epochs",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=4096,
-        help="Batch size for training (default: 4096)",
+        help="Batch size for training",
     )
     parser.add_argument(
         "--lr",
         type=float,
         default=0.001,
-        help="Learning rate (default: 0.001)",
+        help="Learning rate",
     )
     parser.add_argument(
         "--save-path",
         type=str,
         default="pretrained/pretrained_model.pth",
-        help="Path to save pretrained model (default: pretrained/pretrained_model.pth)",
+        help="Path to save pretrained model",
     )
     parser.add_argument(
         "--device",
         type=str,
-        default="cuda:1",
-        help="Device to use (default: cuda:1)",
+        default="cuda:5",
+        help="Device to use)",
     )
     parser.add_argument(
         "--demonstrations-dir",
         type=str,
         default="demonstrations",
-        help="Directory containing demonstration files (default: demonstrations)",
+        help="Directory containing demonstration files",
     )
     parser.add_argument(
         "--num-workers",
         type=int,
-        default=16,
-        help="Number of DataLoader workers (default: 0)",
+        default=48,
+        help="Number of DataLoader workers",
     )
     parser.add_argument(
         "--no-scheduler",
         action="store_true",
-        help="Disable learning rate scheduler (default: enabled with cosine annealing)",
+        help="Disable learning rate scheduler",
+    )
+    parser.add_argument(
+        "--noisy",
+        action="store_true",
+        help="Enable noisy linear layers",
     )
 
     args = parser.parse_args()
@@ -301,4 +308,5 @@ if __name__ == "__main__":
         use_scheduler=not args.no_scheduler,
         demonstrations_dir=args.demonstrations_dir,
         num_workers=args.num_workers,
+        use_noisy=args.noisy,
     )

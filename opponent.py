@@ -22,6 +22,7 @@ class OpponentManager:
             device=agent.device,
             use_prioritized_replay=agent.use_prioritized_replay,
             policy_path="dummy_path_no_load.pth",  # Dummy path that doesn't exist
+            use_noisy=agent.use_noisy,
         )
 
     def save_snapshot(self, episode):
