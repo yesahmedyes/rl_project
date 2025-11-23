@@ -42,6 +42,7 @@ def train_dqn(
     num_workers=None,
     episodes_per_batch=10,
     learning_steps_per_batch=100,
+    dense_rewards=True,
 ):
     global interrupted
 
@@ -194,6 +195,7 @@ def train_dqn(
                         weights,
                         positions_per_worker[worker_id],
                         opponent_snapshots,
+                        dense_rewards,
                     )
                     for worker_id in range(num_workers)
                 ],

@@ -270,7 +270,12 @@ class InferencePolicy:
 
 
 def rollout_worker(
-    worker_id, num_episodes, weights, agent_player_positions, opponent_snapshots
+    worker_id,
+    num_episodes,
+    weights,
+    agent_player_positions,
+    opponent_snapshots,
+    dense_rewards=True,
 ):
     # Each worker gets different seed
     np.random.seed(worker_id * 1000 + np.random.randint(1000))
@@ -360,12 +365,23 @@ def rollout_worker(
             ):
                 next_state_encoded = agent_policy.encode_state(next_state)
 
-                # Calculate dense shaped reward
-                winner = next_state[4] if terminated else None
-                agent_won_step = (winner == agent_player) if terminated else False
-                reward = calculate_dense_reward(
-                    state, next_state, terminated, agent_won_step, agent_player
-                )
+                # Calculate reward based on dense_rewards parameter
+                if dense_rewards:
+                    winner = next_state[4] if terminated else None
+
+                    agent_won_step = (winner == agent_player) if terminated else False
+
+                    reward = calculate_dense_reward(
+                        state, next_state, terminated, agent_won_step, agent_player
+                    )
+                else:
+                    # Use simple 1/0 reward: 1 for win, 0 otherwise
+                    if terminated:
+                        winner = next_state[4]
+
+                        reward = 1.0 if winner == agent_player else 0.0
+                    else:
+                        reward = 0.0
 
                 trajectory.append(
                     (state_encoded, action_idx, reward, next_state_encoded, terminated)
