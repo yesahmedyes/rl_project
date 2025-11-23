@@ -13,6 +13,9 @@ from ludo import Ludo
 def collect_expert_demonstrations(num_episodes=5000, opponent_policy=None, device=None):
     heuristic_policy = Policy_Heuristic()
 
+    # Create a temporary DQN instance just for state encoding
+    temp_dqn = Policy_DQN(training_mode=False, device=device)
+
     expert_data = []
 
     iterator = tqdm(range(num_episodes), desc="Collecting expert data")
@@ -21,9 +24,6 @@ def collect_expert_demonstrations(num_episodes=5000, opponent_policy=None, devic
         env = Ludo()
         state = env.reset()
         player_turn = state[4]
-
-        # Create a temporary DQN instance just for state encoding
-        temp_dqn = Policy_DQN(training_mode=False, device=device)
 
         # Randomly assign which player uses heuristic (for diversity)
         heuristic_player = episode % 2

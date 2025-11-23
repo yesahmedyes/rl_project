@@ -1,7 +1,7 @@
-from policy_random import *
-from policy_snakes import *
 from ludo import *
 from tqdm import tqdm
+from policy_heuristic import Policy_Heuristic
+from milestone2 import Policy_Milestone2
 
 
 def get_win_percentages(n, policy1, policy2):
@@ -34,13 +34,7 @@ def get_win_percentages(n, policy1, policy2):
 print(
     get_win_percentages(
         10000,
-        Policy_Snakes(
-            policy_path="./models/policy_snakes_old.pkl",
-            use_heuristics=True,
-            heuristic_weight=0.0,
-        ),
-        Policy_Snakes(
-            policy_path="./models/policy_snakes_old.pkl",
-        ),
+        Policy_Heuristic(),
+        Policy_Milestone2(),
     )
 )
