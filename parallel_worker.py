@@ -10,21 +10,12 @@ from models import DuelingDQNNetwork
 
 
 def calculate_dense_reward(
-    state_before, state_after, terminated, agent_won, agent_player
+    state_before,
+    state_after,
+    terminated,
+    agent_won,
+    agent_player,
 ):
-    """
-    Calculate shaped reward based on game progress and key events.
-
-    Dense reward shaping to provide richer learning signals:
-    - Terminal: ±10.0 for win/loss
-    - Reaching destination: +0.5 per piece
-    - Capturing opponent: +0.3 per capture
-    - Getting captured: -0.3 per capture
-    - Exiting home: +0.1 per piece
-    - Forward progress: +0.01 per position
-    - Step penalty: -0.001 (efficiency incentive)
-    """
-
     # Terminal rewards (strong signal)
     if terminated:
         return 10.0 if agent_won else -10.0
