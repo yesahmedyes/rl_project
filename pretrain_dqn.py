@@ -56,6 +56,7 @@ def behavioral_cloning_train(
     epochs=10,
     learning_rate=0.001,
     use_scheduler=True,
+    checkpoint_dir=None,
 ):
     # Create a temporary optimizer with the specified learning rate
     temp_optimizer = torch.optim.Adam(
@@ -121,19 +122,35 @@ def behavioral_cloning_train(
             f"   Epoch {epoch + 1}/{epochs} - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2%}, LR: {current_lr:.6f}"
         )
 
+        # Save checkpoint every 10 epochs
+        if checkpoint_dir is not None and (epoch + 1) % 10 == 0:
+            checkpoint_path = os.path.join(
+                checkpoint_dir, f"checkpoint_epoch_{epoch + 1}.pth"
+            )
+            # Clear CUDA cache before saving to free up memory
+            if dqn_agent.device.type == "cuda":
+                torch.cuda.empty_cache()
+            dqn_agent.save(checkpoint_path)
+            print(f"   💾 Checkpoint saved: {checkpoint_path}")
+
     # Update target network
     dqn_agent.target_net.load_state_dict(dqn_agent.policy_net.state_dict())
 
-    # Final evaluation
     with torch.no_grad():
         dqn_agent.policy_net.eval()
-        all_states_eval = train_loader.dataset.states.to(dqn_agent.device)
-        all_actions_eval = train_loader.dataset.actions.to(dqn_agent.device)
+        correct_predictions = 0
+        total_samples = 0
 
-        q_values = dqn_agent.policy_net(all_states_eval)
-        predicted_actions = q_values.argmax(dim=1)
-        final_accuracy = (predicted_actions == all_actions_eval).float().mean().item()
+        for batch_states, batch_actions in train_loader:
+            batch_states = batch_states.to(dqn_agent.device)
+            batch_actions = batch_actions.to(dqn_agent.device)
 
+            q_values = dqn_agent.policy_net(batch_states)
+            predicted_actions = q_values.argmax(dim=1)
+            correct_predictions += (predicted_actions == batch_actions).sum().item()
+            total_samples += batch_actions.size(0)
+
+        final_accuracy = correct_predictions / total_samples
         print(f"\n   ✅ Training complete! Final accuracy: {final_accuracy:.2%}\n")
 
         dqn_agent.policy_net.train()
@@ -143,7 +160,7 @@ def pretrain_dqn(
     batch_size=512,
     epochs=10,
     learning_rate=0.001,
-    save_path="models/pretrained_model.pth",
+    save_path="pretrained/pretrained_model.pth",
     device="cuda:1",
     use_scheduler=True,
     demonstrations_dir="demonstrations",
@@ -191,16 +208,25 @@ def pretrain_dqn(
     # Step 3: Train DQN using behavioral cloning
     print("Step 3: Training DQN using behavioral cloning...")
 
+    # Set up checkpoint directory
+    checkpoint_dir = os.path.dirname(save_path)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
     behavioral_cloning_train(
         dqn_agent,
         train_loader,
         epochs=epochs,
         learning_rate=learning_rate,
         use_scheduler=use_scheduler,
+        checkpoint_dir=checkpoint_dir,
     )
 
     # Step 4: Save the pretrained model
     print("Step 4: Saving pretrained model...")
+
+    # Clear CUDA cache before saving to free up memory
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
 
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     dqn_agent.save(save_path)
@@ -237,8 +263,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save-path",
         type=str,
-        default="models/pretrained_model.pth",
-        help="Path to save pretrained model (default: models/pretrained_model.pth)",
+        default="pretrained/pretrained_model.pth",
+        help="Path to save pretrained model (default: pretrained/pretrained_model.pth)",
     )
     parser.add_argument(
         "--device",
