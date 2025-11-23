@@ -6,61 +6,97 @@ import torch
 import torch.nn.functional as F
 
 
-class AttentionLayer(nn.Module):
-    def __init__(self, input_dim, hidden_dim=128):
-        super(AttentionLayer, self).__init__()
-        self.query = nn.Linear(input_dim, hidden_dim)
-        self.key = nn.Linear(input_dim, hidden_dim)
-        self.value = nn.Linear(input_dim, hidden_dim)
-        self.scale = hidden_dim**0.5
+class NoisyLinear(nn.Module):
+    """
+    Noisy Linear Layer for exploration.
+    Adds learnable parametric noise to weights and biases for state-dependent exploration.
+    Reference: Fortunato et al. 2017 - "Noisy Networks for Exploration"
+    """
 
-    def forward(self, x, num_items):
-        batch_size = x.shape[0]
-        feature_dim = x.shape[1] // num_items
+    def __init__(self, in_features, out_features, sigma_init=0.5):
+        super(NoisyLinear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.sigma_init = sigma_init
 
-        items = x[:, : num_items * feature_dim].reshape(
-            batch_size, num_items, feature_dim
+        # Learnable parameters for mean
+        self.weight_mu = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        self.weight_sigma = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        self.bias_mu = nn.Parameter(torch.FloatTensor(out_features))
+        self.bias_sigma = nn.Parameter(torch.FloatTensor(out_features))
+
+        # Noise buffers (not trained, reset each forward pass)
+        self.register_buffer(
+            "weight_epsilon", torch.FloatTensor(out_features, in_features)
         )
+        self.register_buffer("bias_epsilon", torch.FloatTensor(out_features))
 
-        # Compute attention scores
-        q = self.query(items)
-        k = self.key(items)
-        v = self.value(items)
+        self.reset_parameters()
+        self.reset_noise()
 
-        scores = torch.matmul(q, k.transpose(-2, -1)) / self.scale
-        weights = F.softmax(scores, dim=-1)
+    def reset_parameters(self):
+        """Initialize parameters"""
+        mu_range = 1 / np.sqrt(self.in_features)
+        self.weight_mu.data.uniform_(-mu_range, mu_range)
+        self.weight_sigma.data.fill_(self.sigma_init / np.sqrt(self.in_features))
+        self.bias_mu.data.uniform_(-mu_range, mu_range)
+        self.bias_sigma.data.fill_(self.sigma_init / np.sqrt(self.out_features))
 
-        attended = torch.matmul(weights, v)
+    def reset_noise(self):
+        """Reset random noise"""
+        epsilon_in = self._scale_noise(self.in_features)
+        epsilon_out = self._scale_noise(self.out_features)
+        self.weight_epsilon.copy_(epsilon_out.outer(epsilon_in))
+        self.bias_epsilon.copy_(epsilon_out)
 
-        output = attended.mean(dim=1)
+    def _scale_noise(self, size):
+        """Factorized Gaussian noise"""
+        x = torch.randn(size)
+        return x.sign() * x.abs().sqrt()
 
-        return output
+    def forward(self, x):
+        if self.training:
+            # Use noisy weights during training
+            weight = self.weight_mu + self.weight_sigma * self.weight_epsilon
+            bias = self.bias_mu + self.bias_sigma * self.bias_epsilon
+        else:
+            # Use mean weights during evaluation
+            weight = self.weight_mu
+            bias = self.bias_mu
+        return F.linear(x, weight, bias)
 
 
 class DuelingDQNNetwork(nn.Module):
-    def __init__(self, state_dim=28, hidden_dim=128, max_actions=12):
+    def __init__(self, state_dim=28, hidden_dim=128, max_actions=12, use_noisy=True):
         super(DuelingDQNNetwork, self).__init__()
 
         self.state_dim = state_dim
         self.max_actions = max_actions
+        self.use_noisy = use_noisy
 
-        # Feature extraction with 3-layer MLP (optimized for enhanced state)
+        # Feature extraction with 3-layer MLP + LayerNorm
         self.fc1 = nn.Linear(state_dim, hidden_dim)
+        self.ln1 = nn.LayerNorm(hidden_dim)
+
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.ln2 = nn.LayerNorm(hidden_dim)
+
         self.fc3 = nn.Linear(hidden_dim, hidden_dim)
+        self.ln3 = nn.LayerNorm(hidden_dim)
 
-        # Dueling streams
-        self.value_stream = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(),
-            nn.Linear(hidden_dim // 2, 1),
-        )
+        # Dueling streams with NoisyLinear (where exploration matters most)
+        if use_noisy:
+            self.value_fc1 = NoisyLinear(hidden_dim, hidden_dim // 2)
+            self.value_fc2 = NoisyLinear(hidden_dim // 2, 1)
 
-        self.advantage_stream = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(),
-            nn.Linear(hidden_dim // 2, max_actions),
-        )
+            self.advantage_fc1 = NoisyLinear(hidden_dim, hidden_dim // 2)
+            self.advantage_fc2 = NoisyLinear(hidden_dim // 2, max_actions)
+        else:
+            self.value_fc1 = nn.Linear(hidden_dim, hidden_dim // 2)
+            self.value_fc2 = nn.Linear(hidden_dim // 2, 1)
+
+            self.advantage_fc1 = nn.Linear(hidden_dim, hidden_dim // 2)
+            self.advantage_fc2 = nn.Linear(hidden_dim // 2, max_actions)
 
         self._initialize_weights()
 
@@ -70,15 +106,33 @@ class DuelingDQNNetwork(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.constant_(m.bias, 0.0)
 
-    def forward(self, x, action_mask=None):
-        # Simplified feature extraction (3-layer MLP)
-        features = F.relu(self.fc1(x))
-        features = F.relu(self.fc2(features))
-        features = F.relu(self.fc3(features))
+    def reset_noise(self):
+        """Reset noise in all noisy layers"""
+        if self.use_noisy:
+            for module in self.modules():
+                if isinstance(module, NoisyLinear):
+                    module.reset_noise()
 
-        # Dueling architecture
-        value = self.value_stream(features)  # (batch_size, 1)
-        advantages = self.advantage_stream(features)  # (batch_size, max_actions)
+    def forward(self, x, action_mask=None):
+        # Feature extraction with LayerNorm (improves stability)
+        features = self.fc1(x)
+        features = self.ln1(features)
+        features = F.relu(features)
+
+        features = self.fc2(features)
+        features = self.ln2(features)
+        features = F.relu(features)
+
+        features = self.fc3(features)
+        features = self.ln3(features)
+        features = F.relu(features)
+
+        # Dueling architecture with noisy layers
+        value = F.relu(self.value_fc1(features))
+        value = self.value_fc2(value)
+
+        advantages = F.relu(self.advantage_fc1(features))
+        advantages = self.advantage_fc2(advantages)
 
         # Combine value and advantages
         # Q(s,a) = V(s) + (A(s,a) - mean(A(s,a)))

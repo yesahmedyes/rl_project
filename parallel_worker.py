@@ -9,6 +9,92 @@ from milestone2 import Policy_Milestone2
 from models import DuelingDQNNetwork
 
 
+def calculate_dense_reward(
+    state_before, state_after, terminated, agent_won, agent_player
+):
+    """
+    Calculate shaped reward based on game progress and key events.
+
+    Dense reward shaping to provide richer learning signals:
+    - Terminal: ±10.0 for win/loss
+    - Reaching destination: +0.5 per piece
+    - Capturing opponent: +0.3 per capture
+    - Getting captured: -0.3 per capture
+    - Exiting home: +0.1 per piece
+    - Forward progress: +0.01 per position
+    - Step penalty: -0.001 (efficiency incentive)
+    """
+
+    # Terminal rewards (strong signal)
+    if terminated:
+        return 10.0 if agent_won else -10.0
+
+    # Initialize reward with small step penalty
+    reward = -0.001
+
+    # Extract agent's and opponent's pieces before and after
+    gotis_red_before, gotis_yellow_before, _, _, _ = state_before
+    gotis_red_after, gotis_yellow_after, _, _, _ = state_after
+
+    if agent_player == 0:
+        my_gotis_before = gotis_red_before.gotis
+        my_gotis_after = gotis_red_after.gotis
+        opp_gotis_before = gotis_yellow_before.gotis
+        opp_gotis_after = gotis_yellow_after.gotis
+    else:
+        my_gotis_before = gotis_yellow_before.gotis
+        my_gotis_after = gotis_yellow_after.gotis
+        opp_gotis_before = gotis_red_before.gotis
+        opp_gotis_after = gotis_red_after.gotis
+
+    # 1. FORWARD PROGRESS REWARD
+    # Small reward for moving pieces toward destination
+    total_progress_before = sum(max(0, g.position) for g in my_gotis_before)
+    total_progress_after = sum(max(0, g.position) for g in my_gotis_after)
+    progress_delta = total_progress_after - total_progress_before
+
+    if progress_delta > 0:
+        reward += progress_delta * 0.01  # 0.01 per position advanced
+
+    # 2. REACHING DESTINATION REWARD
+    # Significant reward for completing a piece
+    pieces_home_before = sum(1 for g in my_gotis_before if g.position == DESTINATION)
+    pieces_home_after = sum(1 for g in my_gotis_after if g.position == DESTINATION)
+
+    if pieces_home_after > pieces_home_before:
+        reward += 0.5  # Major milestone reward
+
+    # 3. CAPTURING OPPONENT REWARD
+    # Reward for sending opponent back to start
+    opp_at_start_before = sum(1 for g in opp_gotis_before if g.position == STARTING)
+    opp_at_start_after = sum(1 for g in opp_gotis_after if g.position == STARTING)
+
+    if opp_at_start_after > opp_at_start_before:
+        reward += 0.3 * (opp_at_start_after - opp_at_start_before)
+
+    # 4. GETTING CAPTURED PENALTY
+    # Penalty for being sent back to start
+    my_at_start_before = sum(1 for g in my_gotis_before if g.position == STARTING)
+    my_at_start_after = sum(1 for g in my_gotis_after if g.position == STARTING)
+
+    if my_at_start_after > my_at_start_before:
+        reward -= 0.3 * (my_at_start_after - my_at_start_before)
+
+    # 5. EXITING HOME REWARD
+    # Encourage getting pieces into play
+    my_in_play_before = sum(
+        1 for g in my_gotis_before if g.position >= 0 and g.position < DESTINATION
+    )
+    my_in_play_after = sum(
+        1 for g in my_gotis_after if g.position >= 0 and g.position < DESTINATION
+    )
+
+    if my_in_play_after > my_in_play_before:
+        reward += 0.1 * (my_in_play_after - my_in_play_before)
+
+    return reward
+
+
 class InferencePolicy:
     def __init__(self, weights, state_dim=28, max_actions=12, device="cpu"):
         self.device = torch.device("cpu")
@@ -31,6 +117,9 @@ class InferencePolicy:
 
         for param in self.policy_net.parameters():
             param.requires_grad = False
+
+        # Reset noise for deterministic inference (uses mean weights in eval mode)
+        self.policy_net.reset_noise()
 
     def encode_state(self, state):
         gotis_red, gotis_yellow, dice_roll, _, player_turn = state
@@ -275,42 +364,43 @@ def rollout_worker(
             # Store transition if agent's turn and action was valid
             if (
                 player_turn == agent_player
-                and not terminated
                 and action is not None
                 and state_encoded is not None
             ):
                 next_state_encoded = agent_policy.encode_state(next_state)
-                reward = -0.0001  # Small step penalty
+
+                # Calculate dense shaped reward
+                winner = next_state[4] if terminated else None
+                agent_won_step = (winner == agent_player) if terminated else False
+                reward = calculate_dense_reward(
+                    state, next_state, terminated, agent_won_step, agent_player
+                )
+
                 trajectory.append(
-                    (state_encoded, action_idx, reward, next_state_encoded, False)
+                    (state_encoded, action_idx, reward, next_state_encoded, terminated)
                 )
 
             state = next_state
             player_turn = next_player_turn
 
-        # Add final transition with terminal reward
+        # Determine episode outcome
         if len(trajectory) > 0:
             winner = state[4]
             agent_won = winner == agent_player
-            final_reward = 1.0 if agent_won else -1.0
 
-            last_state, last_action, _, _, _ = trajectory[-1]
-            next_state_encoded = np.zeros(agent_policy.state_dim, dtype=np.float32)
-            trajectory[-1] = (
-                last_state,
-                last_action,
-                final_reward,
-                next_state_encoded,
-                True,
-            )
+            # Get final reward from last transition (already calculated with dense rewards)
+            final_reward = trajectory[-1][2]
+        else:
+            agent_won = False
+            final_reward = 0.0
 
         all_trajectories.append(
             {
                 "trajectory": trajectory,
                 "opponent_type": opponent_type,
-                "agent_won": agent_won if len(trajectory) > 0 else False,
+                "agent_won": agent_won,
                 "episode_length": episode_length,
-                "final_reward": final_reward if len(trajectory) > 0 else 0,
+                "final_reward": final_reward,
             }
         )
 

@@ -11,7 +11,7 @@ from ludo import STARTING, DESTINATION, SAFE_SQUARES
 class Policy_DQN:
     def __init__(
         self,
-        epsilon_start=1.0,
+        epsilon_start=0.8,
         epsilon_end=0.05,
         epsilon_decay=0.9995,
         learning_rate=0.001,
@@ -262,53 +262,6 @@ class Policy_DQN:
 
         self.last_action_idx = action_idx
 
-    def update(self, reward, next_state, next_action_space):
-        if not self.training_mode or self.last_state_encoded is None:
-            return
-
-        next_state_encoded = self.encode_state(next_state)
-        done = False
-
-        self.replay_buffer.push(
-            self.last_state_encoded,
-            self.last_action_idx,
-            reward,
-            next_state_encoded,
-            done,
-        )
-
-        if len(self.replay_buffer) >= self.batch_size:
-            self._learn()
-
-        self.steps_done += 1
-
-        if self.steps_done % self.target_update_freq == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
-
-    def episode_end(self, reward):
-        if not self.training_mode or self.last_state_encoded is None:
-            return
-
-        next_state_encoded = np.zeros(self.state_dim, dtype=np.float32)
-
-        done = True
-
-        self.replay_buffer.push(
-            self.last_state_encoded,
-            self.last_action_idx,
-            reward,
-            next_state_encoded,
-            done,
-        )
-
-        if len(self.replay_buffer) >= self.batch_size:
-            self._learn()
-
-        self.last_state_encoded = None
-        self.last_action_idx = None
-        self.last_action_space = None
-        self.episode_count += 1
-
     def _learn(self):
         if self.use_prioritized_replay:
             (
@@ -374,6 +327,10 @@ class Policy_DQN:
         # Gradient clipping
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
         self.optimizer.step()
+
+        # Reset noise in noisy layers (for next forward pass)
+        self.policy_net.reset_noise()
+        self.target_net.reset_noise()
 
         # Update priorities in replay buffer
         if self.use_prioritized_replay:

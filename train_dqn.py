@@ -22,9 +22,9 @@ interrupted = False
 def train_dqn(
     n_episodes=50000,
     epsilon_start=1.0,
-    epsilon_end=0.05,
-    epsilon_decay=0.98,
-    learning_rate=0.001,
+    epsilon_end=0.01,
+    epsilon_decay=0.995,
+    learning_rate=0.0005,
     gamma=0.99,
     batch_size=2048,
     buffer_size=200000,
@@ -41,7 +41,7 @@ def train_dqn(
     per_beta=0.4,
     num_workers=None,
     episodes_per_batch=10,
-    learning_steps_per_batch=50,
+    learning_steps_per_batch=100,
 ):
     global interrupted
 
