@@ -1,12 +1,14 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch.optim.lr_scheduler as lr_scheduler
 from tqdm import tqdm
 import os
 
 from policy_dqn import Policy_DQN
 from policy_heuristic import Policy_Heuristic
 from policy_random import Policy_Random
+from milestone2 import Policy_Milestone2
 from ludo import Ludo
 
 
@@ -66,6 +68,7 @@ def behavioral_cloning_train(
     batch_size=512,
     epochs=10,
     learning_rate=0.001,
+    use_scheduler=True,
 ):
     # Extract states and actions
     expert_states = np.array([data[0] for data in expert_data])
@@ -80,6 +83,16 @@ def behavioral_cloning_train(
         dqn_agent.policy_net.parameters(), lr=learning_rate
     )
 
+    # Create learning rate scheduler if requested
+    if use_scheduler:
+        eta_min = learning_rate * 0.01
+
+        scheduler = lr_scheduler.CosineAnnealingLR(
+            temp_optimizer, T_max=epochs, eta_min=eta_min
+        )
+    else:
+        scheduler = None
+
     # Supervised learning: train network to predict heuristic's actions
     dqn_agent.policy_net.train()
 
@@ -89,6 +102,7 @@ def behavioral_cloning_train(
     for epoch in range(epochs):
         total_loss = 0.0
         correct_predictions = 0
+        current_lr = temp_optimizer.param_groups[0]["lr"]
 
         # Shuffle data
         indices = torch.randperm(dataset_size)
@@ -122,11 +136,15 @@ def behavioral_cloning_train(
             correct_predictions += (predicted_actions == batch_actions).sum().item()
             total_loss += loss.item()
 
+        # Update learning rate scheduler
+        if scheduler is not None:
+            scheduler.step()
+
         avg_loss = total_loss / num_batches
         accuracy = correct_predictions / dataset_size
 
         print(
-            f"   Epoch {epoch + 1}/{epochs} - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2%}"
+            f"   Epoch {epoch + 1}/{epochs} - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2%}, LR: {current_lr:.6f}"
         )
 
     # Update target network
@@ -151,6 +169,7 @@ def pretrain_dqn(
     learning_rate=0.001,
     save_path="models/pretrained_model.pth",
     device="cuda:1",
+    use_scheduler=True,
 ):
     # Set device
     if device is None:
@@ -184,6 +203,12 @@ def pretrain_dqn(
         device=device,
     )
 
+    expert_data += collect_expert_demonstrations(
+        num_episodes=num_episodes,
+        opponent_policy=Policy_Milestone2(),
+        device=device,
+    )
+
     print(f"✅ Collected {len(expert_data)} expert state-action pairs\n")
 
     # Step 2: Train DQN using behavioral cloning
@@ -195,6 +220,7 @@ def pretrain_dqn(
         batch_size=batch_size,
         epochs=epochs,
         learning_rate=learning_rate,
+        use_scheduler=use_scheduler,
     )
 
     # Step 3: Save the pretrained model
@@ -217,14 +243,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--episodes",
         type=int,
-        default=5000,
-        help="Number of episodes to collect from heuristic (default: 5000)",
+        default=500000,
+        help="Number of episodes to collect from heuristic",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=10,
-        help="Number of training epochs (default: 10)",
+        default=1000,
+        help="Number of training epochs",
     )
     parser.add_argument(
         "--batch-size",
@@ -236,7 +262,7 @@ if __name__ == "__main__":
         "--lr",
         type=float,
         default=0.001,
-        help="Learning rate (default: 0.001)",
+        help="Learning rate",
     )
     parser.add_argument(
         "--save-path",
@@ -250,6 +276,11 @@ if __name__ == "__main__":
         default="cuda:1",
         help="Device to use (default: cuda:1)",
     )
+    parser.add_argument(
+        "--no-scheduler",
+        action="store_true",
+        help="Disable learning rate scheduler (default: enabled with cosine annealing)",
+    )
 
     args = parser.parse_args()
 
@@ -260,4 +291,5 @@ if __name__ == "__main__":
         learning_rate=args.lr,
         save_path=args.save_path,
         device=args.device,
+        use_scheduler=not args.no_scheduler,
     )
