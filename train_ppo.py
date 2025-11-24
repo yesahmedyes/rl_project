@@ -82,6 +82,7 @@ def train_maskable_ppo(args):
         vf_coef=args.vf_coef,
         max_grad_norm=args.max_grad_norm,
         policy_kwargs=policy_kwargs,
+        device=args.device,
         verbose=1,
     )
 
@@ -109,9 +110,19 @@ def main():
     parser = argparse.ArgumentParser(description="Train MaskablePPO with SB3-Contrib")
     parser.add_argument("--opponents", type=str, default="heuristic,random,milestone2")
     parser.add_argument("--total-timesteps", type=int, default=2_000_000)
-    parser.add_argument("--n-envs", type=int, default=4)
+    parser.add_argument(
+        "--n-envs",
+        type=int,
+        default=32,
+        help="Number of parallel environments (default: 32, optimized for 96 CPU cores)",
+    )
     parser.add_argument("--n-steps", type=int, default=2048)
-    parser.add_argument("--batch-size", type=int, default=1024)
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=4096,
+        help="Batch size for training (default: 2048, optimized for GPU utilization)",
+    )
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--gae-lambda", type=float, default=0.95)
@@ -125,6 +136,12 @@ def main():
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--checkpoint-freq", type=int, default=100_000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        help="Device to use for training (e.g., 'cuda:0', 'cuda:1', 'auto'). Default: 'auto'",
+    )
     parser.add_argument(
         "--sparse", action="store_true", help="use sparse win/loss rewards"
     )
