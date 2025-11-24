@@ -116,7 +116,7 @@ def main():
         description="Behavioral cloning using imitation + MaskableActorCritic policy"
     )
     parser.add_argument("--demonstrations-dir", type=str, default="demonstrations")
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=2048)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument(
