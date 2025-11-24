@@ -3,7 +3,6 @@ import argparse
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 from sb3_contrib.common.wrappers import ActionMasker
 from sb3_contrib.ppo_mask import MaskablePPO
-from stable_baselines3.common.vec_env import DummyVecEnv
 
 from ludo_maskable_env import LudoMaskableEnv
 
@@ -44,6 +43,9 @@ def evaluate(
     else:
         model = MaskablePPO.load(model_path, env=env)
 
+    # Set model to eval mode for evaluation
+    model.policy.set_training_mode(False)
+
     wins = 0
 
     for _ in range(n_games):
@@ -58,6 +60,8 @@ def evaluate(
 
         if env.unwrapped.agent_won():
             wins += 1
+
+        model.policy.set_training_mode(True)
 
     return wins / max(1, n_games)
 
