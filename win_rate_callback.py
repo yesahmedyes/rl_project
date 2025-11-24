@@ -43,6 +43,9 @@ class WinRateCallback(BaseCallback):
     def _evaluate_model(self, model: MaskablePPO) -> Dict[str, float]:
         win_rates = {}
 
+        # Set model to eval mode for evaluation
+        model.policy.set_training_mode(False)
+
         for opponent in self.opponents:
             env = ActionMasker(
                 LudoMaskableEnv(
@@ -55,14 +58,18 @@ class WinRateCallback(BaseCallback):
             )
 
             wins = 0
+
             for _ in range(self.n_eval_games):
                 obs, info = env.reset()
+
                 done = False
+
                 while not done:
                     action, _ = model.predict(
                         obs, action_masks=info.get("action_mask"), deterministic=True
                     )
                     obs, reward, done, _, info = env.step(action)
+
                 if env.unwrapped.agent_won():
                     wins += 1
 
@@ -71,6 +78,9 @@ class WinRateCallback(BaseCallback):
 
             if self.verbose > 0:
                 print(f"  Win rate vs {opponent}: {win_rate:.2%}")
+
+        # Restore training mode
+        model.policy.set_training_mode(True)
 
         return win_rates
 
