@@ -6,12 +6,12 @@ import numpy as np
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 from sb3_contrib.common.wrappers import ActionMasker
 from sb3_contrib.ppo_mask import MaskablePPO
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from ludo_maskable_env import LudoMaskableEnv
-from utils import ensure_directories
+from win_rate_callback import WinRateCallback
 
 
 def mask_fn(env: LudoMaskableEnv) -> np.ndarray:
@@ -32,7 +32,9 @@ def make_env(
             alternate_start=alternate_start,
             seed=base_seed + rank,
         )
+
         env = ActionMasker(env, mask_fn)
+
         return env
 
     return _init
@@ -40,18 +42,19 @@ def make_env(
 
 def parse_arch(text: str) -> Tuple[int, ...]:
     layers = [p.strip() for p in text.split(",") if p.strip()]
+
     if not layers:
-        raise argparse.ArgumentTypeError(
-            "net-arch must list hidden sizes, e.g. 256,256"
-        )
+        raise argparse.ArgumentTypeError("net-arch must list hidden sizes")
+
     try:
         return tuple(int(p) for p in layers)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError("net-arch values must be integers") from exc
+        raise argparse.ArgumentTypeError(
+            "net-arch must be comma separated integers"
+        ) from exc
 
 
 def train_maskable_ppo(args):
-    ensure_directories()
     set_random_seed(args.seed)
 
     opponents = tuple(op.strip() for op in args.opponents.split(",") if op.strip())
@@ -69,6 +72,11 @@ def train_maskable_ppo(args):
 
     policy_kwargs = dict(net_arch=dict(pi=list(args.net_arch), vf=list(args.net_arch)))
 
+    # Setup TensorBoard logging
+    if args.tensorboard_log:
+        os.makedirs(args.tensorboard_log, exist_ok=True)
+        print(f"📊 TensorBoard logs will be saved to {args.tensorboard_log}")
+
     model = MaskablePPO(
         MaskableActorCriticPolicy,
         vec_env,
@@ -83,6 +91,7 @@ def train_maskable_ppo(args):
         max_grad_norm=args.max_grad_norm,
         policy_kwargs=policy_kwargs,
         device=args.device,
+        tensorboard_log=args.tensorboard_log,
         verbose=1,
     )
 
@@ -91,16 +100,31 @@ def train_maskable_ppo(args):
         bc_policy = MaskableActorCriticPolicy.load(args.bc_path, device="auto")
         model.policy.load_state_dict(bc_policy.state_dict())
 
-    callbacks = None
+    callbacks = []
     if args.checkpoint_dir:
         os.makedirs(args.checkpoint_dir, exist_ok=True)
-        callbacks = CheckpointCallback(
-            save_freq=max(1, args.checkpoint_freq // args.n_envs),
-            save_path=args.checkpoint_dir,
-            name_prefix="maskable_ppo",
+        callbacks.append(
+            CheckpointCallback(
+                save_freq=max(1, args.checkpoint_freq // args.n_envs),
+                save_path=args.checkpoint_dir,
+                name_prefix="maskable_ppo",
+            )
         )
 
-    model.learn(total_timesteps=args.total_timesteps, callback=callbacks)
+    # Add win rate evaluation callback
+    if args.eval_freq > 0:
+        callbacks.append(
+            WinRateCallback(
+                eval_freq=args.eval_freq,
+                n_eval_games=args.n_eval_games,
+                dense_rewards=dense_rewards,
+                log_path=args.win_rate_log,
+                verbose=1,
+            )
+        )
+
+    callback_list = CallbackList(callbacks) if callbacks else None
+    model.learn(total_timesteps=args.total_timesteps, callback=callback_list)
     os.makedirs(os.path.dirname(args.save_path) or ".", exist_ok=True)
     model.save(args.save_path)
     print(f"✅ Saved trained MaskablePPO to {args.save_path}")
@@ -109,19 +133,19 @@ def train_maskable_ppo(args):
 def main():
     parser = argparse.ArgumentParser(description="Train MaskablePPO with SB3-Contrib")
     parser.add_argument("--opponents", type=str, default="heuristic,random,milestone2")
-    parser.add_argument("--total-timesteps", type=int, default=2_000_000)
+    parser.add_argument("--total-timesteps", type=int, default=20_000_000)
     parser.add_argument(
         "--n-envs",
         type=int,
         default=32,
-        help="Number of parallel environments (default: 32, optimized for 96 CPU cores)",
+        help="Number of parallel environments",
     )
     parser.add_argument("--n-steps", type=int, default=2048)
     parser.add_argument(
         "--batch-size",
         type=int,
         default=4096,
-        help="Batch size for training (default: 2048, optimized for GPU utilization)",
+        help="Batch size for training",
     )
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -135,6 +159,30 @@ def main():
     parser.add_argument("--bc-path", type=str, default="")
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--checkpoint-freq", type=int, default=100_000)
+    parser.add_argument(
+        "--eval-freq",
+        type=int,
+        default=100_000,
+        help="Frequency to evaluate win rates",
+    )
+    parser.add_argument(
+        "--n-eval-games",
+        type=int,
+        default=100,
+        help="Number of games to play per opponent during evaluation",
+    )
+    parser.add_argument(
+        "--win-rate-log",
+        type=str,
+        default="logs/win_rates.csv",
+        help="Path to save win rate CSV file",
+    )
+    parser.add_argument(
+        "--tensorboard-log",
+        type=str,
+        default="logs/tensorboard",
+        help="Directory for TensorBoard logs. View with: tensorboard --logdir=logs/tensorboard",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--device",

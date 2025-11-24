@@ -65,6 +65,7 @@ def pretrain_with_bc(
     learning_rate: float,
     save_path: str,
     net_arch,
+    seed: int = 42,
 ):
     states, actions = load_demonstrations(demonstrations_dir)
     transitions = build_transitions(states, actions)
@@ -73,12 +74,14 @@ def pretrain_with_bc(
     action_space = spaces.Discrete(MAX_ACTIONS)
 
     policy = make_policy(obs_space, action_space, learning_rate, net_arch)
+    rng = np.random.default_rng(seed)
     bc_trainer = BC(
         observation_space=obs_space,
         action_space=action_space,
         policy=policy,
         demonstrations=transitions,
         batch_size=batch_size,
+        rng=rng,
     )
 
     bc_trainer.train(n_epochs=epochs)
@@ -113,6 +116,7 @@ def main():
         "--save-path", type=str, default="models/pretrained_bc_policy.zip"
     )
     parser.add_argument("--net-arch", type=parse_arch, default=parse_arch("256,256"))
+    parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
 
@@ -123,6 +127,7 @@ def main():
         learning_rate=args.lr,
         save_path=args.save_path,
         net_arch=args.net_arch,
+        seed=args.seed,
     )
 
 

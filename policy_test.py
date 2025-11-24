@@ -44,22 +44,33 @@ def main():
         description="Evaluate MaskablePPO vs scripted opponents"
     )
     parser.add_argument("--model-path", type=str, default="models/maskable_ppo.zip")
-    parser.add_argument("--games", type=int, default=200)
-    parser.add_argument("--opponent", type=str, default="heuristic")
+    parser.add_argument("--games", type=int, default=1000)
     parser.add_argument(
-        "--sparse", action="store_true", help="use sparse win/loss rewards"
+        "--dense", action="store_true", help="use dense rewards (default: sparse)"
     )
     parser.add_argument("--seed", type=int, default=0)
 
     args = parser.parse_args()
-    win_rate = evaluate(
-        model_path=args.model_path,
-        n_games=args.games,
-        opponent=args.opponent,
-        dense_rewards=not args.sparse,
-        seed=args.seed,
-    )
-    print(f"Win rate vs {args.opponent}: {win_rate:.2%}")
+
+    # Test against all opponents
+    opponents = ["random", "heuristic", "milestone2"]
+
+    print(f"Evaluating model: {args.model_path}")
+    print(f"Games per opponent: {args.games}")
+    print(f"Reward type: {'dense' if args.dense else 'sparse'}")
+    print("-" * 50)
+
+    for opponent in opponents:
+        win_rate = evaluate(
+            model_path=args.model_path,
+            n_games=args.games,
+            opponent=opponent,
+            dense_rewards=args.dense,
+            seed=args.seed,
+        )
+        print(f"Win rate vs {opponent}: {win_rate:.2%}")
+
+    print("-" * 50)
 
 
 if __name__ == "__main__":

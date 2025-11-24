@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -16,15 +16,6 @@ OpponentName = str
 
 
 class LudoMaskableEnv(gym.Env):
-    """Gymnasium-compatible wrapper around the original Ludo environment.
-
-    The agent always controls one player; the opponent is provided by one
-    of the classic scripted policies. The environment automatically simulates
-    opponent turns and extra rolls so that every observation returned to the
-    learner corresponds to a meaningful decision point with at least one
-    available action.
-    """
-
     metadata = {"render_modes": []}
 
     def __init__(
@@ -35,13 +26,16 @@ class LudoMaskableEnv(gym.Env):
         seed: Optional[int] = None,
     ):
         super().__init__()
+
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(STATE_DIM,), dtype=np.float32
         )
+
         self.action_space = spaces.Discrete(MAX_ACTIONS)
 
         if not opponents:
             raise ValueError("At least one opponent must be specified")
+
         self._opponent_names = tuple(opponents)
         self._dense_rewards = dense_rewards
         self._alternate_start = alternate_start
@@ -54,9 +48,9 @@ class LudoMaskableEnv(gym.Env):
         self._opponent_policy = None
         self._last_mask: Optional[np.ndarray] = None
 
-    # ------------------------------------------------------------------ Gym API
     def reset(self, *, seed: Optional[int] = None, options=None):
         super().reset(seed=seed)
+
         if seed is not None:
             self._rng = np.random.default_rng(seed)
 
@@ -69,6 +63,7 @@ class LudoMaskableEnv(gym.Env):
         observation = encode_ludo_state(self._state)
         self._last_mask = self._compute_action_mask()
         info = {"action_mask": self._last_mask}
+
         return observation, info
 
     def step(self, action: int):
@@ -76,16 +71,15 @@ class LudoMaskableEnv(gym.Env):
             raise RuntimeError("Environment must be reset before calling step().")
 
         if self._state[3]:
-            # Episode already ended, follow Gymnasium convention.
             return self._terminal_observation()
 
         action_tuple = self._index_to_action(action)
         valid_actions = self._ludo.get_action_space()
 
         if action_tuple not in valid_actions:
-            # Invalid move: terminate with penalty to discourage exploiting mask bugs.
             observation = encode_ludo_state(self._state)
             info = {"action_mask": self._last_mask}
+
             return observation, -5.0, True, False, info
 
         next_state = self._ludo.step(action_tuple)
@@ -102,33 +96,38 @@ class LudoMaskableEnv(gym.Env):
 
         return observation, reward, done, False, info
 
-    # ------------------------------------------------------------------ Helpers
     def get_action_mask(self) -> np.ndarray:
-        """Used by sb3-contrib's ActionMasker wrapper."""
         if self._last_mask is None:
             self._last_mask = self._compute_action_mask()
+
         return self._last_mask
 
     def _auto_to_agent(self, state) -> Tuple:
-        """Simulate environment until it's the agent's turn with a valid move."""
         total_reward = 0.0
+
         while not state[3]:
             if state[4] == self._agent_player:
                 action_space = self._ludo.get_action_space()
+
                 if action_space:
                     break
+
                 next_state = self._ludo.step(None)
                 total_reward += self._transition_reward(state, next_state)
                 state = next_state
+
                 continue
 
             action_space = self._ludo.get_action_space()
+
             if action_space:
                 action = self._opponent_policy.get_action(state, action_space)
             else:
                 action = None
+
             next_state = self._ludo.step(action)
             total_reward += self._transition_reward(state, next_state)
+
             state = next_state
 
         return state, total_reward
@@ -138,6 +137,7 @@ class LudoMaskableEnv(gym.Env):
             return np.zeros(MAX_ACTIONS, dtype=bool)
 
         mask = np.zeros(MAX_ACTIONS, dtype=bool)
+
         for dice_idx, goti_idx in self._ludo.get_action_space():
             action_idx = dice_idx * 4 + goti_idx
             action_idx = max(0, min(action_idx, MAX_ACTIONS - 1))
@@ -146,6 +146,7 @@ class LudoMaskableEnv(gym.Env):
         if not mask.any():
             # Should not happen because _auto_to_agent ensures at least one action.
             mask[0] = True
+
         return mask
 
     def _transition_reward(self, state_before, state_after):
@@ -156,6 +157,7 @@ class LudoMaskableEnv(gym.Env):
 
         terminated = state_after[3]
         agent_won = terminated and state_after[4] == self._agent_player
+
         return calculate_dense_reward(
             state_before, state_after, terminated, agent_won, self._agent_player
         )
@@ -163,29 +165,36 @@ class LudoMaskableEnv(gym.Env):
     def _index_to_action(self, action_index: int) -> Tuple[int, int]:
         dice_idx = max(0, action_index // 4)
         goti_idx = max(0, action_index % 4)
+
         return dice_idx, goti_idx
 
     def _choose_agent_player(self) -> int:
         if not self._alternate_start:
             return 0
+
         return int(self._rng.integers(0, 2))
 
     def _make_opponent(self):
         choice = self._rng.choice(self._opponent_names)
+
         if choice == "random":
             return Policy_Random()
         if choice == "heuristic":
             return Policy_Heuristic()
         if choice == "milestone2":
             return Policy_Milestone2()
+
         raise ValueError(f"Unsupported opponent '{choice}'")
 
     def _terminal_observation(self):
         observation = encode_ludo_state(self._state)
+
         info = {"action_mask": np.zeros(MAX_ACTIONS, dtype=bool)}
+
         return observation, 0.0, True, False, info
 
     def agent_won(self) -> bool:
         if self._state is None or not self._state[3]:
             return False
+
         return self._state[4] == self._agent_player
