@@ -54,7 +54,7 @@ def make_policy(observation_space, action_space, learning_rate, net_arch):
         observation_space=observation_space,
         action_space=action_space,
         lr_schedule=lr_schedule,
-        net_arch=net_arch,
+        net_arch=dict(pi=list(net_arch), vf=list(net_arch)),
     )
 
 

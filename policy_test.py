@@ -1,6 +1,6 @@
 import argparse
 
-from sb3_contrib.common.maskable.wrappers import ActionMasker
+from sb3_contrib.common.wrappers import ActionMasker
 from sb3_contrib.ppo_mask import MaskablePPO
 
 from ludo_maskable_env import LudoMaskableEnv
@@ -10,7 +10,9 @@ def mask_fn(env: LudoMaskableEnv):
     return env.get_action_mask()
 
 
-def evaluate(model_path: str, n_games: int, opponent: str, dense_rewards: bool, seed: int):
+def evaluate(
+    model_path: str, n_games: int, opponent: str, dense_rewards: bool, seed: int
+):
     env = ActionMasker(
         LudoMaskableEnv(
             opponents=(opponent,),
@@ -38,11 +40,15 @@ def evaluate(model_path: str, n_games: int, opponent: str, dense_rewards: bool, 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate MaskablePPO vs scripted opponents")
+    parser = argparse.ArgumentParser(
+        description="Evaluate MaskablePPO vs scripted opponents"
+    )
     parser.add_argument("--model-path", type=str, default="models/maskable_ppo.zip")
     parser.add_argument("--games", type=int, default=200)
     parser.add_argument("--opponent", type=str, default="heuristic")
-    parser.add_argument("--sparse", action="store_true", help="use sparse win/loss rewards")
+    parser.add_argument(
+        "--sparse", action="store_true", help="use sparse win/loss rewards"
+    )
     parser.add_argument("--seed", type=int, default=0)
 
     args = parser.parse_args()

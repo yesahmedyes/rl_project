@@ -4,7 +4,7 @@ from typing import Callable, Sequence, Tuple
 
 import numpy as np
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
-from sb3_contrib.common.maskable.wrappers import ActionMasker
+from sb3_contrib.common.wrappers import ActionMasker
 from sb3_contrib.ppo_mask import MaskablePPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.utils import set_random_seed
@@ -67,9 +67,7 @@ def train_maskable_ppo(args):
     else:
         vec_env = DummyVecEnv(env_fns)
 
-    policy_kwargs = dict(
-        net_arch=[dict(pi=list(args.net_arch), vf=list(args.net_arch))]
-    )
+    policy_kwargs = dict(net_arch=dict(pi=list(args.net_arch), vf=list(args.net_arch)))
 
     model = MaskablePPO(
         MaskableActorCriticPolicy,
