@@ -22,9 +22,10 @@ class WinRateCallback(BaseCallback):
         verbose: int = 1,
     ):
         super().__init__(verbose)
+
         self.eval_freq = eval_freq
         self.n_eval_games = n_eval_games
-        self.opponents = opponents or ["random", "heuristic", "milestone2"]
+        self.opponents = opponents or ["random", "heuristic"]
         self.dense_rewards = dense_rewards
         self.log_path = log_path
         self.win_rates_history: List[Dict] = []

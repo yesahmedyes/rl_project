@@ -124,9 +124,13 @@ def train_maskable_ppo(args):
         )
 
     callback_list = CallbackList(callbacks) if callbacks else None
+
     model.learn(total_timesteps=args.total_timesteps, callback=callback_list)
+
     os.makedirs(os.path.dirname(args.save_path) or ".", exist_ok=True)
+
     model.save(args.save_path)
+
     print(f"✅ Saved trained MaskablePPO to {args.save_path}")
 
 

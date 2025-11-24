@@ -28,8 +28,14 @@ done
 echo "=== Behavior Cloning (Maskable Policy) ==="
 python "$SCRIPT_DIR/pretrain_ppo.py" --save-path "$PRETRAIN_SAVE" "${PRETRAIN_ARGS[@]+"${PRETRAIN_ARGS[@]}"}"
 
+echo "=== Testing Pretrained BC Policy ==="
+python "$SCRIPT_DIR/policy_test.py" --model-path "$PRETRAIN_SAVE"
+
 echo "=== Online Maskable PPO Training ==="
 python "$SCRIPT_DIR/train_ppo.py" --bc-path "$PRETRAIN_SAVE" --save-path "$FINAL_SAVE" "${TRAIN_ARGS[@]+"${TRAIN_ARGS[@]}"}"
+
+echo "=== Testing Final Trained PPO Policy ==="
+python "$SCRIPT_DIR/policy_test.py" --model-path "$FINAL_SAVE"
 
 echo "✅ Pipeline finished."
 

@@ -2,6 +2,7 @@ import argparse
 import glob
 import os
 import pickle
+import warnings
 from typing import Tuple
 
 import numpy as np
@@ -11,6 +12,12 @@ from imitation.data.types import Transitions
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 
 from features import MAX_ACTIONS, STATE_DIM
+
+warnings.filterwarnings(
+    "ignore",
+    message="Converting a tensor with requires_grad=True to a scalar",
+    category=UserWarning,
+)
 
 
 def load_demonstrations(demonstrations_dir: str) -> Tuple[np.ndarray, np.ndarray]:
