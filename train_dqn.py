@@ -26,8 +26,8 @@ def train_dqn(
     epsilon_decay=0.99,
     learning_rate=0.0001,
     gamma=0.99,
-    batch_size=1024,
-    buffer_size=200000,
+    batch_size=8192,
+    buffer_size=500000,
     target_update_freq=1000,
     save_path="policy_dqn.pth",
     eval_interval=5000,
@@ -41,7 +41,7 @@ def train_dqn(
     per_beta=0.4,
     num_workers=None,
     episodes_per_batch=10,
-    learning_steps_per_batch=100,
+    learning_steps_per_batch=50,
     dense_rewards=True,
     use_noisy=True,
 ):
@@ -144,6 +144,7 @@ def train_dqn(
     n_iterations = n_episodes_actual // total_episodes_per_iteration
 
     total_episodes = 0
+    training_started = False
 
     # Create multiprocessing pool
     with mp.Pool(processes=num_workers) as pool:
@@ -256,8 +257,14 @@ def train_dqn(
                 avg_rewards = avg_rewards[-MAX_HISTORY:]
                 episode_lengths = episode_lengths[-MAX_HISTORY:]
 
-            # Perform learning updates
-            if len(agent.replay_buffer) >= batch_size:
+            # Perform learning updates - wait until buffer is full to prevent catastrophic forgetting
+            buffer_full = len(agent.replay_buffer) >= buffer_size
+            if buffer_full:
+                # Print message when training first starts
+                if not training_started:
+                    print("\n✅ Replay buffer is full - Starting training now!")
+                    training_started = True
+
                 for _ in range(learning_steps_per_batch):
                     agent._learn()
                     agent.steps_done += 1
@@ -486,7 +493,8 @@ if __name__ == "__main__":
             n_episodes=10000000,
             use_prioritized_replay=True,
             load_checkpoint=True,
-            checkpoint_path="models/best_policy_dqn.pth",
+            dense_rewards=False,
+            checkpoint_path="pretrained/checkpoint_2_epoch_50.pth",
         )
 
     except KeyboardInterrupt:
