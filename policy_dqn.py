@@ -61,8 +61,13 @@ class Policy_DQN:
             use_noisy=use_noisy,
         ).to(self.device)
 
-        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.load_state_dict(self.policy_net.state_dict(), strict=False)
         self.target_net.eval()
+
+        if training_mode:
+            self.policy_net.train()
+        else:
+            self.policy_net.eval()
 
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=learning_rate)
 
@@ -386,8 +391,13 @@ class Policy_DQN:
 
         checkpoint = torch.load(filename, map_location=self.device)
 
-        self.policy_net.load_state_dict(checkpoint["policy_net_state_dict"])
-        self.target_net.load_state_dict(checkpoint["target_net_state_dict"])
+        self.policy_net.load_state_dict(
+            checkpoint["policy_net_state_dict"], strict=False
+        )
+        self.target_net.load_state_dict(
+            checkpoint["target_net_state_dict"], strict=False
+        )
+
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.epsilon = checkpoint.get("epsilon", self.epsilon_start)
         self.steps_done = checkpoint.get("steps_done", 0)
@@ -413,7 +423,7 @@ class Policy_DQN:
         }
 
     def set_weights(self, weights):
-        self.policy_net.load_state_dict(weights["policy_net"])
+        self.policy_net.load_state_dict(weights["policy_net"], strict=False)
         self.epsilon = weights["epsilon"]
 
     def add_trajectory_to_buffer(self, trajectory):

@@ -7,12 +7,13 @@ import torch.nn.functional as F
 
 
 class NoisyLinear(nn.Module):
-    def __init__(self, in_features, out_features, sigma_init=0.5):
+    def __init__(self, in_features, out_features, sigma_init=0.5, use_noisy=True):
         super(NoisyLinear, self).__init__()
 
         self.in_features = in_features
         self.out_features = out_features
         self.sigma_init = sigma_init
+        self.use_noisy = use_noisy
 
         # Learnable parameters for mean
         self.weight_mu = nn.Parameter(torch.FloatTensor(out_features, in_features))
@@ -28,6 +29,10 @@ class NoisyLinear(nn.Module):
 
         self.reset_parameters()
         self.reset_noise()
+
+        if not use_noisy:
+            self.weight_sigma.requires_grad = False
+            self.bias_sigma.requires_grad = False
 
     def reset_parameters(self):
         mu_range = 1 / np.sqrt(self.in_features)
@@ -50,7 +55,7 @@ class NoisyLinear(nn.Module):
         return x.sign() * x.abs().sqrt()
 
     def forward(self, x):
-        if self.training:
+        if self.training and self.use_noisy:
             # Use noisy weights during training
             weight = self.weight_mu + self.weight_sigma * self.weight_epsilon
             bias = self.bias_mu + self.bias_sigma * self.bias_epsilon
@@ -80,19 +85,11 @@ class DuelingDQNNetwork(nn.Module):
         self.fc3 = nn.Linear(hidden_dim, hidden_dim)
         self.ln3 = nn.LayerNorm(hidden_dim)
 
-        # Dueling streams with NoisyLinear (where exploration matters most)
-        if use_noisy:
-            self.value_fc1 = NoisyLinear(hidden_dim, hidden_dim // 2)
-            self.value_fc2 = NoisyLinear(hidden_dim // 2, 1)
+        self.value_fc1 = NoisyLinear(hidden_dim, hidden_dim // 2)
+        self.value_fc2 = NoisyLinear(hidden_dim // 2, 1)
 
-            self.advantage_fc1 = NoisyLinear(hidden_dim, hidden_dim // 2)
-            self.advantage_fc2 = NoisyLinear(hidden_dim // 2, max_actions)
-        else:
-            self.value_fc1 = nn.Linear(hidden_dim, hidden_dim // 2)
-            self.value_fc2 = nn.Linear(hidden_dim // 2, 1)
-
-            self.advantage_fc1 = nn.Linear(hidden_dim, hidden_dim // 2)
-            self.advantage_fc2 = nn.Linear(hidden_dim // 2, max_actions)
+        self.advantage_fc1 = NoisyLinear(hidden_dim, hidden_dim // 2)
+        self.advantage_fc2 = NoisyLinear(hidden_dim // 2, max_actions)
 
         self._initialize_weights()
 
@@ -103,11 +100,9 @@ class DuelingDQNNetwork(nn.Module):
                 nn.init.constant_(m.bias, 0.0)
 
     def reset_noise(self):
-        """Reset noise in all noisy layers"""
-        if self.use_noisy:
-            for module in self.modules():
-                if isinstance(module, NoisyLinear):
-                    module.reset_noise()
+        for module in self.modules():
+            if isinstance(module, NoisyLinear):
+                module.reset_noise()
 
     def forward(self, x, action_mask=None):
         # Feature extraction with LayerNorm (improves stability)
