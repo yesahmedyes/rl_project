@@ -26,6 +26,8 @@ class Policy_DQN:
         per_alpha=0.6,
         per_beta=0.4,
         use_noisy=True,
+        weight_decay=1e-5,
+        create_optimizer=True,
     ):
         self.epsilon_start = epsilon_start
         self.epsilon = epsilon_start
@@ -38,6 +40,8 @@ class Policy_DQN:
         self.policy_path = policy_path
         self.use_prioritized_replay = use_prioritized_replay
         self.use_noisy = use_noisy
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
 
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,7 +73,11 @@ class Policy_DQN:
         else:
             self.policy_net.eval()
 
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=learning_rate)
+        # Create optimizer if requested (can be delayed to allow loading checkpoint first)
+        if create_optimizer:
+            self._create_optimizer()
+        else:
+            self.optimizer = None
 
         if use_prioritized_replay:
             self.replay_buffer = PrioritizedReplayBuffer(
@@ -86,6 +94,45 @@ class Policy_DQN:
 
         if not self.training_mode:
             self.load(policy_path)
+
+    def _create_optimizer(self):
+        """Create optimizer with weight decay for regularization."""
+        self.optimizer = optim.Adam(
+            self.policy_net.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay,
+        )
+
+    def freeze_early_layers(self, num_layers=2):
+        """
+        Freeze early feature extraction layers to preserve pretrained knowledge.
+
+        Args:
+            num_layers: Number of early MLP layers to freeze (1-3).
+                       Freezes fc1, ln1, fc2, ln2 (for num_layers=2) and optionally fc3, ln3
+        """
+        layers_to_freeze = []
+        if num_layers >= 1:
+            layers_to_freeze.extend(["fc1", "ln1"])
+        if num_layers >= 2:
+            layers_to_freeze.extend(["fc2", "ln2"])
+        if num_layers >= 3:
+            layers_to_freeze.extend(["fc3", "ln3"])
+
+        for name, param in self.policy_net.named_parameters():
+            if any(layer_name in name for layer_name in layers_to_freeze):
+                param.requires_grad = False
+
+        print(
+            f"🔒 Frozen {num_layers} early feature extraction layers: {', '.join(layers_to_freeze)}"
+        )
+        print("   Only dueling heads (value/advantage) will be trained initially")
+
+    def unfreeze_all_layers(self):
+        """Unfreeze all layers for full fine-tuning."""
+        for param in self.policy_net.parameters():
+            param.requires_grad = True
+        print("🔓 Unfroze all layers - full network training enabled")
 
     def encode_state(self, state):
         gotis_red, gotis_yellow, dice_roll, _, player_turn = state
@@ -370,17 +417,19 @@ class Policy_DQN:
 
         os.makedirs(os.path.dirname(filename), exist_ok=True)
 
-        torch.save(
-            {
-                "policy_net_state_dict": self.policy_net.state_dict(),
-                "target_net_state_dict": self.target_net.state_dict(),
-                "optimizer_state_dict": self.optimizer.state_dict(),
-                "epsilon": self.epsilon,
-                "steps_done": self.steps_done,
-                "episode_count": self.episode_count,
-            },
-            filename,
-        )
+        save_dict = {
+            "policy_net_state_dict": self.policy_net.state_dict(),
+            "target_net_state_dict": self.target_net.state_dict(),
+            "epsilon": self.epsilon,
+            "steps_done": self.steps_done,
+            "episode_count": self.episode_count,
+        }
+
+        # Only save optimizer state if optimizer exists
+        if self.optimizer is not None:
+            save_dict["optimizer_state_dict"] = self.optimizer.state_dict()
+
+        torch.save(save_dict, filename)
 
         print(f"DQN model saved to {filename}")
 
@@ -398,7 +447,15 @@ class Policy_DQN:
             checkpoint["target_net_state_dict"], strict=False
         )
 
-        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        # Load optimizer state only if optimizer exists (might be created after loading)
+        if self.optimizer is not None and "optimizer_state_dict" in checkpoint:
+            try:
+                self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            except (ValueError, KeyError) as e:
+                print(
+                    f"⚠️  Could not load optimizer state (will use fresh optimizer): {e}"
+                )
+
         self.epsilon = checkpoint.get("epsilon", self.epsilon_start)
         self.steps_done = checkpoint.get("steps_done", 0)
         self.episode_count = checkpoint.get("episode_count", 0)

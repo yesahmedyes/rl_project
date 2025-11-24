@@ -44,6 +44,10 @@ def train_dqn(
     learning_steps_per_batch=50,
     dense_rewards=True,
     use_noisy=True,
+    weight_decay=1e-5,
+    freeze_early_layers=2,
+    warmup_learning_rate=0.00001,
+    warmup_steps=5000,
 ):
     global interrupted
 
@@ -59,8 +63,17 @@ def train_dqn(
     print(f"   Learning steps per batch: {learning_steps_per_batch}")
     gpu_device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"   GPU: {gpu_device}")
+    print(f"   Weight decay: {weight_decay}")
+    if freeze_early_layers > 0:
+        print(f"   Freeze early layers: {freeze_early_layers} layers")
+    if warmup_steps > 0:
+        print(
+            f"   Learning rate warmup: {warmup_learning_rate} → {learning_rate} over {warmup_steps} steps"
+        )
     print()
 
+    # Create agent WITHOUT optimizer if loading checkpoint (will create after loading)
+    create_optimizer_now = not load_checkpoint
     agent = Policy_DQN(
         epsilon_start=epsilon_start,
         epsilon_end=epsilon_end,
@@ -76,17 +89,37 @@ def train_dqn(
         per_alpha=per_alpha,
         per_beta=per_beta,
         use_noisy=use_noisy,
+        weight_decay=weight_decay,
+        create_optimizer=create_optimizer_now,
     )
 
     start_episode = 0
 
+    # Load checkpoint BEFORE creating optimizer to preserve pretrained weights
     if load_checkpoint:
         checkpoint_file = checkpoint_path if checkpoint_path else f"models/{save_path}"
 
         if os.path.exists(checkpoint_file):
             agent.load(checkpoint_file)
-
             print(f"✅ Loaded checkpoint from {checkpoint_file}")
+
+            # Now create optimizer with weight decay (start with warmup LR)
+            initial_lr = warmup_learning_rate if warmup_steps > 0 else learning_rate
+            agent.learning_rate = initial_lr
+            agent._create_optimizer()
+            print(
+                f"✅ Created optimizer with weight decay={weight_decay}, initial LR={initial_lr}"
+            )
+
+            # Freeze early layers if requested
+            if freeze_early_layers > 0:
+                agent.freeze_early_layers(num_layers=freeze_early_layers)
+    else:
+        # If not loading checkpoint, ensure optimizer exists
+        if agent.optimizer is None:
+            initial_lr = warmup_learning_rate if warmup_steps > 0 else learning_rate
+            agent.learning_rate = initial_lr
+            agent._create_optimizer()
 
     opponent_manager = OpponentManager(agent, max_snapshots=10)
 
@@ -266,12 +299,49 @@ def train_dqn(
                     training_started = True
 
                 for _ in range(learning_steps_per_batch):
+                    # Apply learning rate warmup
+                    if warmup_steps > 0 and agent.steps_done < warmup_steps:
+                        # Linear warmup: gradually increase LR from warmup_learning_rate to learning_rate
+                        warmup_progress = agent.steps_done / warmup_steps
+                        current_lr = (
+                            warmup_learning_rate
+                            + (learning_rate - warmup_learning_rate) * warmup_progress
+                        )
+
+                        # Update learning rate for all parameter groups
+                        for param_group in agent.optimizer.param_groups:
+                            param_group["lr"] = current_lr
+                    elif warmup_steps > 0 and agent.steps_done == warmup_steps:
+                        # Warmup complete - set to final learning rate
+                        for param_group in agent.optimizer.param_groups:
+                            param_group["lr"] = learning_rate
+                        print(
+                            f"\n📈 Learning rate warmup complete (after {warmup_steps} steps) - using final LR: {learning_rate}"
+                        )
+
                     agent._learn()
                     agent.steps_done += 1
 
                     # Update target network
                     if agent.steps_done % target_update_freq == 0:
                         agent.target_net.load_state_dict(agent.policy_net.state_dict())
+
+                # Log warmup progress periodically (after batch, to avoid spam)
+                if warmup_steps > 0 and agent.steps_done < warmup_steps:
+                    steps_before_batch = agent.steps_done - learning_steps_per_batch
+                    steps_after_batch = agent.steps_done
+                    # Check if we crossed a 1000-step milestone during this batch
+                    milestone_before = steps_before_batch // 1000
+                    milestone_after = steps_after_batch // 1000
+                    if (
+                        milestone_before != milestone_after
+                        and milestone_after * 1000 < warmup_steps
+                    ):
+                        current_lr = agent.optimizer.param_groups[0]["lr"]
+                        warmup_progress = (agent.steps_done / warmup_steps) * 100
+                        print(
+                            f"   📈 Warmup progress: {agent.steps_done}/{warmup_steps} steps ({warmup_progress:.1f}%) - Current LR: {current_lr:.6f}"
+                        )
 
             # Decay epsilon
             agent.decay_epsilon()
