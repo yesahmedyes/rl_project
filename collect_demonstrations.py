@@ -5,7 +5,7 @@ import os
 import pickle
 from datetime import datetime
 
-from policy_ppo import encode_ludo_state, MAX_ACTIONS
+from features import encode_ludo_state, MAX_ACTIONS
 from policy_heuristic import Policy_Heuristic
 from policy_random import Policy_Random
 from milestone2 import Policy_Milestone2
