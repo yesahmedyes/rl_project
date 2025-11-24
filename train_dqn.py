@@ -491,9 +491,10 @@ if __name__ == "__main__":
         # Run until interrupted (essentially infinite)
         agent = train_dqn(
             n_episodes=10000000,
-            use_prioritized_replay=False,
+            use_prioritized_replay=True,
             load_checkpoint=True,
-            dense_rewards=False,
+            dense_rewards=True,
+            learning_rate=0.00001,
             checkpoint_path="pretrained/checkpoint_2_epoch_50.pth",
         )
 
