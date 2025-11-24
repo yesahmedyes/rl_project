@@ -21,13 +21,13 @@ interrupted = False
 
 def train_dqn(
     n_episodes=50000,
-    epsilon_start=0.2,
+    epsilon_start=0.1,
     epsilon_end=0.01,
     epsilon_decay=0.99,
     learning_rate=0.0001,
     gamma=0.99,
     batch_size=8192,
-    buffer_size=500000,
+    buffer_size=1000000,
     target_update_freq=1000,
     save_path="policy_dqn.pth",
     eval_interval=5000,
@@ -491,7 +491,7 @@ if __name__ == "__main__":
         # Run until interrupted (essentially infinite)
         agent = train_dqn(
             n_episodes=10000000,
-            use_prioritized_replay=True,
+            use_prioritized_replay=False,
             load_checkpoint=True,
             dense_rewards=False,
             checkpoint_path="pretrained/checkpoint_2_epoch_50.pth",
