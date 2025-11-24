@@ -60,7 +60,6 @@ def collect_expert_demonstrations(num_episodes=5000, opponent_policy=None, devic
 
 
 def save_demonstrations(expert_data, filepath):
-    """Save demonstrations to a file."""
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
     # Extract states and actions
@@ -77,7 +76,9 @@ def save_demonstrations(expert_data, filepath):
 
 
 def collect_and_save_demonstrations(
-    num_episodes=5000, demonstrations_dir="demonstrations", device=None
+    num_episodes=5000,
+    demonstrations_dir="demonstrations",
+    device=None,
 ):
     # Set device
     if device is None:
@@ -98,8 +99,6 @@ def collect_and_save_demonstrations(
         ("milestone2", Policy_Milestone2()),
     ]
 
-    all_data = []
-
     for opponent_name, opponent_policy in opponents:
         print(f"Collecting demonstrations against {opponent_name} opponent...")
 
@@ -116,18 +115,7 @@ def collect_and_save_demonstrations(
 
         save_demonstrations(expert_data, filepath)
 
-        all_data.extend(expert_data)
         print()
-
-    # Also save combined file with timestamp
-    combined_filepath = os.path.join(
-        demonstrations_dir, f"all_demonstrations_{timestamp}.pkl"
-    )
-    save_demonstrations(all_data, combined_filepath)
-
-    print(f"\n✅ Total demonstrations collected: {len(all_data)}")
-
-    return all_data
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
 import argparse
 
+from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 from sb3_contrib.common.wrappers import ActionMasker
 from sb3_contrib.ppo_mask import MaskablePPO
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 from ludo_maskable_env import LudoMaskableEnv
 
@@ -11,7 +13,12 @@ def mask_fn(env: LudoMaskableEnv):
 
 
 def evaluate(
-    model_path: str, n_games: int, opponent: str, dense_rewards: bool, seed: int
+    model_path: str,
+    n_games: int,
+    opponent: str,
+    dense_rewards: bool,
+    seed: int,
+    wrap: bool = False,
 ):
     env = ActionMasker(
         LudoMaskableEnv(
@@ -22,17 +29,33 @@ def evaluate(
         ),
         mask_fn,
     )
-    model = MaskablePPO.load(model_path, env=env)
+
+    if wrap:
+        policy = MaskableActorCriticPolicy.load(model_path, device="auto")
+
+        model = MaskablePPO(
+            MaskableActorCriticPolicy,
+            env,
+            policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
+            device="auto",
+        )
+
+        model.policy.load_state_dict(policy.state_dict())
+    else:
+        model = MaskablePPO.load(model_path, env=env)
 
     wins = 0
+
     for _ in range(n_games):
         obs, info = env.reset()
         done = False
+
         while not done:
             action, _ = model.predict(
                 obs, action_masks=info.get("action_mask"), deterministic=True
             )
             obs, reward, done, _, info = env.step(action)
+
         if env.unwrapped.agent_won():
             wins += 1
 
@@ -49,6 +72,11 @@ def main():
         "--dense", action="store_true", help="use dense rewards (default: sparse)"
     )
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--wrap",
+        action="store_true",
+        help="wrap policy file in MaskablePPO model (for BC policy files)",
+    )
 
     args = parser.parse_args()
 
@@ -67,6 +95,7 @@ def main():
             opponent=opponent,
             dense_rewards=args.dense,
             seed=args.seed,
+            wrap=args.wrap,
         )
         print(f"Win rate vs {opponent}: {win_rate:.2%}")
 
