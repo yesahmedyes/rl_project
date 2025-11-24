@@ -1,7 +1,7 @@
 from ludo import *
 from tqdm import tqdm
 from policy_heuristic import Policy_Heuristic
-from policy_dqn import Policy_DQN
+from policy_ppo import PolicyPPO
 
 
 def get_win_percentages(n, policy1, policy2):
@@ -35,8 +35,10 @@ print(
     get_win_percentages(
         10000,
         Policy_Heuristic(),
-        Policy_DQN(
-            policy_path="models/best_test_parallel_dqn.pth", training_mode=False
+        PolicyPPO(
+            policy_path="models/policy_ppo.pth",
+            training_mode=False,
+            create_optimizer=False,
         ),
     )
 )

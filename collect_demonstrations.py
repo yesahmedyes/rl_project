@@ -5,7 +5,7 @@ import os
 import pickle
 from datetime import datetime
 
-from policy_dqn import Policy_DQN
+from policy_ppo import encode_ludo_state, MAX_ACTIONS
 from policy_heuristic import Policy_Heuristic
 from policy_random import Policy_Random
 from milestone2 import Policy_Milestone2
@@ -14,9 +14,6 @@ from ludo import Ludo
 
 def collect_expert_demonstrations(num_episodes=5000, opponent_policy=None, device=None):
     heuristic_policy = Policy_Heuristic()
-
-    # Create a temporary DQN instance just for state encoding
-    temp_dqn = Policy_DQN(training_mode=False, device=device)
 
     expert_data = []
 
@@ -43,13 +40,13 @@ def collect_expert_demonstrations(num_episodes=5000, opponent_policy=None, devic
                 action = heuristic_policy.get_action(state, action_space)
 
                 if action is not None:
-                    # Encode state using DQN's encoding method
-                    state_encoded = temp_dqn.encode_state(state)
+                    # Encode state using PPO encoder
+                    state_encoded = encode_ludo_state(state)
 
                     # Convert action to action index
                     dice_idx, goti_idx = action
                     action_idx = dice_idx * 4 + goti_idx
-                    action_idx = max(0, min(action_idx, temp_dqn.max_actions - 1))
+                    action_idx = max(0, min(action_idx, MAX_ACTIONS - 1))
 
                     expert_data.append((state_encoded, action_idx))
             else:

@@ -1,4 +1,4 @@
-from policy_dqn import Policy_DQN
+from policy_ppo import PolicyPPO
 from policy_random import Policy_Random
 from policy_heuristic import Policy_Heuristic
 from milestone2 import Policy_Milestone2
@@ -17,16 +17,14 @@ class OpponentManager:
         self.heuristic_policy = Policy_Heuristic()
         self.milestone2_policy = Policy_Milestone2()
 
-        self.self_play_agent = Policy_DQN(
+        self.self_play_agent = PolicyPPO(
             training_mode=False,
-            device=agent.device,
-            use_prioritized_replay=agent.use_prioritized_replay,
-            policy_path="dummy_path_no_load.pth",  # Dummy path that doesn't exist
-            use_noisy=agent.use_noisy,
+            create_optimizer=False,
+            device=str(agent.device),
         )
 
     def save_snapshot(self, episode):
-        snapshot = copy.deepcopy(self.agent.policy_net.state_dict())
+        snapshot = copy.deepcopy(self.agent.model.state_dict())
 
         self.snapshots.append((episode, snapshot))
 
@@ -57,8 +55,7 @@ class OpponentManager:
                 ]
 
                 # Load snapshot into self-play agent
-                self.self_play_agent.policy_net.load_state_dict(snapshot_state)
-                self.self_play_agent.target_net.load_state_dict(snapshot_state)
+                self.self_play_agent.set_state_dict(snapshot_state)
 
                 return self.self_play_agent, "Self-Play"
             else:
