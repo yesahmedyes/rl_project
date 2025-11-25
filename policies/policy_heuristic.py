@@ -1,4 +1,4 @@
-from ludo import STARTING, DESTINATION, SAFE_SQUARES, Goti
+from env.ludo import STARTING, DESTINATION, SAFE_SQUARES, Goti
 
 
 class Policy_Heuristic:

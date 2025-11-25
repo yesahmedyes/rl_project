@@ -1,7 +1,7 @@
 import pygame
 import time
 import imageio
-import ludo_positions
+from env.ludo_positions import grid_yellow_border, grid_red_border
 import os
 import pickle
 
@@ -184,9 +184,9 @@ def blit_grid(dict_x):
 
 def draw_grid(border_color):
     if border_color == True:
-        blit_grid(ludo_positions.grid_yellow_border)
+        blit_grid(grid_yellow_border)
     else:
-        blit_grid(ludo_positions.grid_red_border)
+        blit_grid(grid_red_border)
 
 
 def extract_color(input_list):

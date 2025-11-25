@@ -1,6 +1,6 @@
-from policy_random import Policy_Random
-from policy_heuristic import Policy_Heuristic
-from ludo import *
+from policies.policy_random import Policy_Random
+from policies.policy_heuristic import Policy_Heuristic
+from env.ludo import Ludo
 from tqdm import tqdm
 
 

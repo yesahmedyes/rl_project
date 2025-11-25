@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Tuple
-from ludo import DESTINATION, SAFE_SQUARES, STARTING
+from env.ludo import DESTINATION, SAFE_SQUARES, STARTING
 
 
 def encode_handcrafted_state(state) -> Tuple[int, int, np.ndarray]:
