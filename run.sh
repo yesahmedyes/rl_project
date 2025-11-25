@@ -25,8 +25,8 @@ for arg in "$@"; do
   fi
 done
 
-echo "=== Behavior Cloning (Maskable Policy) ==="
-python "$SCRIPT_DIR/pretrain_ppo.py" --save-path "$PRETRAIN_SAVE" "${PRETRAIN_ARGS[@]+"${PRETRAIN_ARGS[@]}"}"
+# echo "=== Behavior Cloning (Maskable Policy) ==="
+# python "$SCRIPT_DIR/pretrain_ppo.py" --save-path "$PRETRAIN_SAVE" "${PRETRAIN_ARGS[@]+"${PRETRAIN_ARGS[@]}"}"
 
 echo "=== Testing Pretrained BC Policy ==="
 python "$SCRIPT_DIR/policy_test.py" --model-path "$PRETRAIN_SAVE" --wrap

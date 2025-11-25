@@ -101,7 +101,7 @@ def parse_arch(text: str):
     parts = [p.strip() for p in text.split(",") if p.strip()]
     if not parts:
         raise argparse.ArgumentTypeError(
-            "net-arch must be comma separated integers, e.g. 256,256"
+            "net-arch must be comma separated integers"
         )
     try:
         return tuple(int(p) for p in parts)
@@ -122,7 +122,9 @@ def main():
     parser.add_argument(
         "--save-path", type=str, default="models/pretrained_bc_policy.zip"
     )
-    parser.add_argument("--net-arch", type=parse_arch, default=parse_arch("256,256"))
+    parser.add_argument(
+        "--net-arch", type=parse_arch, default=parse_arch("512,512,256")
+    )
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()

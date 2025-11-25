@@ -35,7 +35,7 @@ def evaluate(
         model = MaskablePPO(
             MaskableActorCriticPolicy,
             env,
-            policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
+            policy_kwargs=dict(net_arch=dict(pi=[512, 512, 256], vf=[512, 512, 256])),
             device="auto",
         )
 
@@ -61,7 +61,7 @@ def evaluate(
         if env.unwrapped.agent_won():
             wins += 1
 
-        model.policy.set_training_mode(True)
+        model.policy.set_training_mode(False)
 
     return wins / max(1, n_games)
 
