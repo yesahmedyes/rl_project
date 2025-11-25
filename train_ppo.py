@@ -83,6 +83,7 @@ def train_maskable_ppo(args):
         learning_rate=args.lr,
         n_steps=args.n_steps,
         batch_size=args.batch_size,
+        n_epochs=args.n_epochs,
         gamma=args.gamma,
         clip_range=args.clip,
         gae_lambda=args.gae_lambda,
@@ -141,24 +142,42 @@ def main():
     parser.add_argument(
         "--n-envs",
         type=int,
-        default=32,
-        help="Number of parallel environments",
+        default=64,
+        help="Number of parallel environments (higher = more diverse samples = lower variance)",
     )
-    parser.add_argument("--n-steps", type=int, default=2048)
+    parser.add_argument(
+        "--n-steps",
+        type=int,
+        default=4096,
+        help="Number of steps to collect per update (higher = lower variance in advantages)",
+    )
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=4096,
-        help="Batch size for training",
+        default=8192,
+        help="Batch size for training (higher = more stable gradients)",
+    )
+    parser.add_argument(
+        "--n-epochs",
+        type=int,
+        default=20,
+        help="Number of epochs per update (higher = more stable, but slower)",
     )
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--gae-lambda", type=float, default=0.95)
     parser.add_argument("--clip", type=float, default=0.2)
     parser.add_argument("--ent-coef", type=float, default=0.1)
-    parser.add_argument("--vf-coef", type=float, default=0.5)
+    parser.add_argument(
+        "--vf-coef",
+        type=float,
+        default=1.0,
+        help="Value function coefficient (higher = better value estimates = lower variance)",
+    )
     parser.add_argument("--max-grad-norm", type=float, default=0.5)
-    parser.add_argument("--net-arch", type=parse_arch, default=parse_arch("512,512,256"))
+    parser.add_argument(
+        "--net-arch", type=parse_arch, default=parse_arch("512,512,256")
+    )
     parser.add_argument("--save-path", type=str, default="models/maskable_ppo.zip")
     parser.add_argument("--bc-path", type=str, default="")
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
