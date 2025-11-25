@@ -7,7 +7,6 @@ MAX_ACTIONS = 12
 
 
 def encode_ludo_state(state) -> np.ndarray:
-    """Convert a raw environment state tuple into a flat feature vector."""
     gotis_red, gotis_yellow, dice_roll, _, player_turn = state
 
     if player_turn == 0:
@@ -97,11 +96,10 @@ def calculate_dense_reward(
     agent_won: bool,
     agent_player: int,
 ) -> float:
-    """Dense shaping reward mirroring the legacy DQN setup."""
     if terminated:
-        return 10.0 if agent_won else -10.0
+        return 1.0 if agent_won else -1.0
 
-    reward = -0.001  # small step penalty
+    reward = -0.0001
 
     gotis_red_before, gotis_yellow_before, _, _, _ = state_before
     gotis_red_after, gotis_yellow_after, _, _, _ = state_after
@@ -121,26 +119,26 @@ def calculate_dense_reward(
     total_progress_after = sum(max(0, g.position) for g in my_gotis_after)
     progress_delta = total_progress_after - total_progress_before
     if progress_delta > 0:
-        reward += progress_delta * 0.01
+        reward += progress_delta * 0.001
 
     pieces_home_before = sum(1 for g in my_gotis_before if g.position == DESTINATION)
     pieces_home_after = sum(1 for g in my_gotis_after if g.position == DESTINATION)
     if pieces_home_after > pieces_home_before:
-        reward += 0.5
+        reward += 0.05
 
     opp_at_start_before = sum(1 for g in opp_gotis_before if g.position == STARTING)
     opp_at_start_after = sum(1 for g in opp_gotis_after if g.position == STARTING)
     if opp_at_start_after > opp_at_start_before:
-        reward += 0.3 * (opp_at_start_after - opp_at_start_before)
+        reward += 0.03 * (opp_at_start_after - opp_at_start_before)
 
     my_at_start_before = sum(1 for g in my_gotis_before if g.position == STARTING)
     my_at_start_after = sum(1 for g in my_gotis_after if g.position == STARTING)
     if my_at_start_after > my_at_start_before:
-        reward -= 0.3 * (my_at_start_after - my_at_start_before)
+        reward -= 0.03 * (my_at_start_after - my_at_start_before)
 
     my_in_play_before = sum(1 for g in my_gotis_before if 0 <= g.position < DESTINATION)
     my_in_play_after = sum(1 for g in my_gotis_after if 0 <= g.position < DESTINATION)
     if my_in_play_after > my_in_play_before:
-        reward += 0.1 * (my_in_play_after - my_in_play_before)
+        reward += 0.01 * (my_in_play_after - my_in_play_before)
 
     return reward
