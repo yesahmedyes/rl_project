@@ -134,11 +134,14 @@ class SelfPlayVecEnv:
     def update_opponent_policy(self, policy):
         self.vec_env.close()
 
+        # Wrap the neural network policy
+        wrapped_policy = NeuralNetworkPolicyWrapper(policy, self.encoding_type)
+
         self.vec_env = make_vec_env(
             n_envs=self.n_envs,
             encoding_type=self.encoding_type,
             opponent_type="self",
-            opponent_policy=policy,
+            opponent_policy=wrapped_policy,
             agent_player=self.agent_player,
             log_dir=self.log_dir,
             seed=self.seed,
@@ -150,3 +153,48 @@ class SelfPlayVecEnv:
 
     def close(self):
         self.vec_env.close()
+
+
+class NeuralNetworkPolicyWrapper:
+    def __init__(self, policy, encoding_type: str = "handcrafted"):
+        self.policy = policy
+        self.encoding_type = encoding_type
+
+    def get_action(self, state, action_space):
+        if not action_space:
+            return None
+
+        # Import here to avoid circular imports
+        from misc.state_encoding import encode_handcrafted_state, encode_onehot_state
+        import torch
+        import numpy as np
+
+        # Encode state
+        if self.encoding_type == "handcrafted":
+            _, _, obs = encode_handcrafted_state(state)
+        else:
+            _, _, obs = encode_onehot_state(state)
+
+        # Create action mask
+        max_actions = 12
+        mask = np.zeros(max_actions, dtype=np.int8)
+        for dice_idx, goti_idx in action_space:
+            action_int = dice_idx * 4 + goti_idx
+            if action_int < max_actions:
+                mask[action_int] = 1
+
+        # Get action from policy
+        obs_tensor = torch.as_tensor(obs).unsqueeze(0).to(self.policy.device)
+        with torch.no_grad():
+            # Get action distribution
+            dist = self.policy.get_distribution(obs_tensor)
+            # Apply mask
+            action_logits = dist.distribution.logits.clone()
+            action_logits[mask == 0] = float("-inf")
+            action = action_logits.argmax().item()
+
+        # Convert back to tuple
+        dice_idx = action // 4
+        goti_idx = action % 4
+
+        return (dice_idx, goti_idx)

@@ -41,8 +41,11 @@ def evaluate_agent(
         steps = 0
 
         while not terminated:
-            # Predict action (ActionMasker handles masks automatically)
-            action, _ = model.predict(obs, deterministic=use_deterministic)
+            action_masks = info.get("action_mask")
+
+            action, _ = model.predict(
+                obs, action_masks=action_masks, deterministic=use_deterministic
+            )
 
             # Step environment
             obs, reward, terminated, truncated, info = env.step(int(action))

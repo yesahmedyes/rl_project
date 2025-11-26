@@ -175,20 +175,33 @@ class LudoGymEnv(gym.Env):
             new_state = self.env.step(None)  # Pass None to trigger auto-pass
             self.current_state = new_state
             terminated = new_state[3]
+            player_turn = new_state[4]
+            agent_won = False
 
             # If not terminated, let opponent play
             if not terminated:
-                player_turn = new_state[4]
-
                 if player_turn != self.agent_player:
                     self.current_state, terminated = self._play_opponent_turn()
+                    if terminated:
+                        player_turn = self.current_state[4]
+                        agent_won = player_turn == self.agent_player
+            else:
+                # Game ended on agent's pass
+                agent_won = player_turn == self.agent_player
 
-            reward = 0.0
+            # Calculate proper reward
+            reward = calculate_dense_reward(
+                self.prev_state,
+                self.current_state,
+                terminated,
+                agent_won,
+                self.agent_player,
+            )
             obs = self._encode_state(self.current_state)
 
             info = {
                 "action_mask": self._get_action_mask(),
-                "agent_won": False,
+                "agent_won": agent_won,
                 "steps": self.steps_taken,
                 "no_valid_actions": True,
             }
