@@ -12,6 +12,15 @@ from misc.curriculum_callback import CurriculumCallback
 from misc.selfplay_callback import SelfPlayCallback
 from bc_ppo import BCMaskablePPO
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API",
+    category=UserWarning,
+    module="pygame.pkgdata",
+)
+
 
 def train_stage(
     config: TrainingConfig,

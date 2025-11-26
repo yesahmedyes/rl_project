@@ -222,9 +222,9 @@ class LudoGymEnv(gym.Env):
 
         # Check if agent won
         agent_won = False
-        if terminated and player_turn != self.agent_player:
-            # If terminated and it's not agent's turn, agent won
-            agent_won = True
+        if terminated:
+            # If game ended immediately after agent's move, the winner is the current player
+            agent_won = player_turn == self.agent_player
 
         # Update current state
         self.current_state = new_state
@@ -236,8 +236,7 @@ class LudoGymEnv(gym.Env):
             # Check if opponent won
             if terminated:
                 player_turn = self.current_state[4]
-                if player_turn == self.agent_player:
-                    agent_won = False
+                agent_won = player_turn == self.agent_player
 
         # Calculate reward
         reward = calculate_dense_reward(

@@ -7,7 +7,7 @@ import pickle
 
 input_lists = []
 
-with open("input_lists.pkl", "rb") as f:
+with open("env/input_lists.pkl", "rb") as f:
     input_lists = pickle.load(f)
 
 
