@@ -17,13 +17,16 @@ class LudoGymEnv(gym.Env):
         encoding_type: str = "handcrafted",
         opponent_policy: Optional[Any] = None,
         opponent_type: str = "random",
-        agent_player: int = 0,
+        agent_player: Optional[int] = 0,
         render_mode: Optional[str] = None,
     ):
         super().__init__()
 
         self.encoding_type = encoding_type
-        self.agent_player = agent_player
+        self.fixed_agent_player = agent_player
+        self.agent_player = (
+            int(np.random.randint(0, 2)) if agent_player is None else agent_player
+        )
         self.render_mode = render_mode
         self.opponent_type = opponent_type
 
@@ -81,6 +84,12 @@ class LudoGymEnv(gym.Env):
 
         return dice_index * 4 + goti_index
 
+    def _select_agent_player(self) -> int:
+        if self.fixed_agent_player is None:
+            return int(np.random.randint(0, 2))
+
+        return self.fixed_agent_player
+
     def _get_action_mask(self) -> np.ndarray:
         mask = np.zeros(self.max_actions, dtype=np.int8)
 
@@ -117,6 +126,9 @@ class LudoGymEnv(gym.Env):
         self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
+
+        # Determine who the agent controls for this episode
+        self.agent_player = self._select_agent_player()
 
         # Reset the Ludo environment
         self.current_state = self.env.reset()

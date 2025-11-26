@@ -6,7 +6,7 @@ from typing import Optional
 class TrainingConfig:
     encoding_type: str = "handcrafted"  # "handcrafted" or "onehot"
     n_envs: int = 64
-    agent_player: int = None
+    agent_player: Optional[int] = None
 
     # PPO hyperparameters
     learning_rate: float = 1e-4
