@@ -1,8 +1,27 @@
-/models
-/logs
-/checkpoints
-/plots
-/pretrained
-/demonstrations
-
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pkl
+
+# Training artifacts
+models/
+logs/
+tensorboard_logs/
+training_logs/
+
+# Checkpoints
+*.zip
+checkpoint_*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
