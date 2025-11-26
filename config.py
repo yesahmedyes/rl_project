@@ -5,12 +5,12 @@ from typing import Optional
 @dataclass
 class TrainingConfig:
     encoding_type: str = "handcrafted"  # "handcrafted" or "onehot"
-    n_envs: int = 64
+    n_envs: int = 24
     agent_player: Optional[int] = None
 
     # PPO hyperparameters
     learning_rate: float = 1e-4
-    n_steps: int = 4096  # Steps per environment before update
+    n_steps: int = 8192  # Steps per environment before update
     batch_size: int = 8192  # Minibatch size
     n_epochs: int = 8  # Number of epochs when optimizing the surrogate loss
     gamma: float = 0.99  # Discount factor
