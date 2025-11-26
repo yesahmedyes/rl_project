@@ -1,68 +1,7 @@
 import numpy as np
 from typing import Dict, Any, Optional
 from tqdm import tqdm
-from env.ludo_gym_env import LudoGymEnv
-
-
-class PPOPolicyWrapper:
-    """
-    Wrapper to make PPO model compatible with the policy interface used by opponents.
-    """
-
-    def __init__(self, model, use_deterministic: bool = True):
-        """
-        Initialize the PPO policy wrapper.
-
-        Args:
-            model: Trained PPO model
-            use_deterministic: If True, use deterministic actions (no sampling)
-        """
-        self.model = model
-        self.use_deterministic = use_deterministic
-
-    def get_action(self, state, action_space):
-        """
-        Get action from the PPO model.
-
-        Args:
-            state: Game state tuple
-            action_space: List of valid action tuples
-
-        Returns:
-            Action tuple or None
-        """
-        if not action_space:
-            return None
-
-        # Create a temporary environment to encode the state
-        temp_env = LudoGymEnv(
-            encoding_type=self.model.observation_space.shape[0] == 70
-            and "handcrafted"
-            or "onehot",
-            opponent_type="random",  # Doesn't matter for encoding
-        )
-        temp_env.current_state = state
-
-        # Encode state
-        obs = temp_env._encode_state(state)
-
-        # Get action mask
-        action_mask = temp_env._get_action_mask()
-
-        # Predict action
-        action, _ = self.model.predict(
-            obs, deterministic=self.use_deterministic, action_masks=action_mask
-        )
-
-        # Convert discrete action to tuple
-        action_tuple = temp_env._action_to_tuple(int(action))
-
-        # Verify action is valid
-        if action_tuple in action_space:
-            return action_tuple
-
-        # Fallback: return first valid action if prediction is invalid
-        return action_space[0] if action_space else None
+from env.vec_env_factory import make_eval_env
 
 
 def evaluate_agent(
@@ -76,26 +15,6 @@ def evaluate_agent(
     seed: int = 0,
     verbose: bool = True,
 ) -> Dict[str, Any]:
-    """
-    Evaluate a trained PPO agent against a specified opponent.
-
-    Args:
-        model: Trained PPO model
-        opponent_type: Type of opponent ("random", "heuristic", or "self")
-        opponent_policy: Custom opponent policy object
-        n_eval_episodes: Number of episodes to evaluate
-        encoding_type: State encoding type
-        agent_player: Which player is the agent (0 or 1)
-        use_deterministic: If True, use deterministic actions
-        seed: Random seed
-        verbose: If True, show progress bar
-
-    Returns:
-        Dictionary with evaluation statistics
-    """
-    # Create evaluation environment (with ActionMasker)
-    from training.vec_env_factory import make_eval_env
-
     env = make_eval_env(
         encoding_type=encoding_type,
         opponent_type=opponent_type,
@@ -111,6 +30,7 @@ def evaluate_agent(
     total_rewards = []
 
     iterator = range(n_eval_episodes)
+
     if verbose:
         iterator = tqdm(iterator, desc=f"Evaluating vs {opponent_type}")
 
@@ -186,22 +106,6 @@ def evaluate_alternating_players(
     seed: int = 0,
     verbose: bool = True,
 ) -> Dict[str, Any]:
-    """
-    Evaluate agent playing as both player 0 and player 1.
-
-    Args:
-        model: Trained PPO model
-        opponent_type: Type of opponent
-        opponent_policy: Custom opponent policy object
-        n_eval_episodes: Number of episodes (split evenly between both positions)
-        encoding_type: State encoding type
-        use_deterministic: If True, use deterministic actions
-        seed: Random seed
-        verbose: If True, show progress bar
-
-    Returns:
-        Dictionary with combined evaluation statistics
-    """
     n_per_position = n_eval_episodes // 2
 
     # Evaluate as player 0
@@ -265,19 +169,7 @@ def quick_eval(
     opponent_type: str = "random",
     n_episodes: int = 100,
     encoding_type: str = "handcrafted",
-) -> float:
-    """
-    Quick evaluation returning just the win rate.
-
-    Args:
-        model: Trained PPO model
-        opponent_type: Type of opponent
-        n_episodes: Number of episodes
-        encoding_type: State encoding type
-
-    Returns:
-        Win rate as a float
-    """
+):
     results = evaluate_alternating_players(
         model=model,
         opponent_type=opponent_type,

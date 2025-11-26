@@ -1,7 +1,3 @@
-"""
-Factory functions for creating vectorized Ludo environments.
-"""
-
 from typing import Optional, Callable, Any
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
@@ -18,22 +14,6 @@ def make_ludo_env(
     log_dir: Optional[str] = None,
     seed: int = 0,
 ) -> Callable:
-    """
-    Create a function that returns a Ludo environment.
-
-    Args:
-        rank: Unique ID for the environment
-        encoding_type: "handcrafted" or "onehot"
-        opponent_type: "random", "heuristic", or "self"
-        opponent_policy: Custom opponent policy object
-        agent_player: Which player is the agent (0 or 1)
-        log_dir: Directory to save monitor logs
-        seed: Random seed
-
-    Returns:
-        Callable that creates the environment
-    """
-
     def _init():
         from env.ludo_gym_env import LudoGymEnv
 
