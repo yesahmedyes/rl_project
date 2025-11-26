@@ -195,11 +195,38 @@ class LudoGymEnv(gym.Env):
         # Store previous state for reward calculation
         self.prev_state = self.current_state
 
+        # Get action mask BEFORE converting action
+        action_mask = self._get_action_mask()
+
+        if np.sum(action_mask) == 0:
+            # No valid moves - automatically pass turn
+            new_state = self.env.step(None)  # Pass None to trigger auto-pass
+            self.current_state = new_state
+            terminated = new_state[3]
+
+            # If not terminated, let opponent play
+            if not terminated:
+                player_turn = new_state[4]
+
+                if player_turn != self.agent_player:
+                    self.current_state, terminated = self._play_opponent_turn()
+
+            reward = -0.05 / 100
+            obs = self._encode_state(self.current_state)
+
+            info = {
+                "action_mask": self._get_action_mask(),
+                "agent_won": False,
+                "steps": self.steps_taken,
+                "no_valid_actions": True,
+            }
+
+            return obs, reward, terminated, False, info
+
         # Convert discrete action to tuple
         action_tuple = self._action_to_tuple(action)
 
         # Validate action
-        action_mask = self._get_action_mask()
         if action >= self.max_actions or action_mask[action] == 0:
             # Invalid action - penalize and terminate
             obs = self._encode_state(self.current_state)
