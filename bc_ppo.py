@@ -196,8 +196,8 @@ class BCMaskablePPO(MaskablePPO):
             self._update_info_buffer(infos)
             n_steps += 1
 
-            if isinstance(self.action_space, torch.Tensor):
-                actions = torch.from_numpy(actions_cpu).to(self.device)
+            # Keep actions as numpy for buffer, convert to tensor if needed for other operations
+            # (The buffer expects numpy arrays, not tensors)
 
             # Handle timeout (episode truncation)
             for idx, done in enumerate(dones):
@@ -213,11 +213,11 @@ class BCMaskablePPO(MaskablePPO):
                         terminal_value = self.policy.predict_values(terminal_obs)[0]
                     rewards[idx] += self.gamma * terminal_value
 
-            # Add to buffer
+            # Add to buffer (use actions_cpu which is numpy, not tensor)
             if use_masking and self._last_action_masks is not None:
                 rollout_buffer.add(
                     self._last_obs,
-                    actions,
+                    actions_cpu,
                     rewards,
                     self._last_episode_starts,
                     values,
@@ -227,7 +227,7 @@ class BCMaskablePPO(MaskablePPO):
             else:
                 rollout_buffer.add(
                     self._last_obs,
-                    actions,
+                    actions_cpu,
                     rewards,
                     self._last_episode_starts,
                     values,
