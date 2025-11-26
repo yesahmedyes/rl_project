@@ -8,8 +8,9 @@ def calculate_dense_reward(
     agent_won: bool,
     agent_player: int,
 ) -> float:
+    # Increased win reward to emphasize winning over incremental progress
     if terminated:
-        return 100.0 if agent_won else -100.0
+        return 200.0 if agent_won else -50.0
 
     # reward = -0.05
     reward = 0.0
@@ -28,32 +29,32 @@ def calculate_dense_reward(
         opp_gotis_before = gotis_red_before.gotis
         opp_gotis_after = gotis_red_after.gotis
 
-    # Progress towards destination
+    # Progress towards destination (reduced to de-emphasize incremental progress)
     total_progress_before = sum(max(0, g.position) for g in my_gotis_before)
     total_progress_after = sum(max(0, g.position) for g in my_gotis_after)
     progress_delta = total_progress_after - total_progress_before
     if progress_delta > 0:
-        reward += progress_delta * 0.05
+        reward += progress_delta * 0.01  # Reduced from 0.05
 
-    # Leaving base
+    # Leaving base (reduced from 5.0)
     base_before = sum(1 for g in my_gotis_before if g.position == STARTING)
     base_after = sum(1 for g in my_gotis_after if g.position == STARTING)
     if base_after < base_before:
-        reward += 5.0 * (base_before - base_after)
+        reward += 2.0 * (base_before - base_after)  # Reduced from 5.0
 
-    # Entering safe squares
+    # Entering safe squares (reduced from 2.0)
     safe_squares_before = sum(1 for g in my_gotis_before if g.position in SAFE_SQUARES)
     safe_squares_after = sum(1 for g in my_gotis_after if g.position in SAFE_SQUARES)
     if safe_squares_after > safe_squares_before:
-        reward += 2.0 * (safe_squares_after - safe_squares_before)
+        reward += 1.0 * (safe_squares_after - safe_squares_before)  # Reduced from 2.0
 
-    # Reaching destination
+    # Reaching destination (keep relatively high as it's directly related to winning)
     home_before = sum(1 for g in my_gotis_before if g.position == DESTINATION)
     home_after = sum(1 for g in my_gotis_after if g.position == DESTINATION)
     if home_after > home_before:
-        reward += 20.0 * (home_after - home_before)
+        reward += 15.0 * (home_after - home_before)  # Reduced from 20.0
 
-    # Capturing opponents
+    # Capturing opponents (reduced from 15.0)
     captured_opponents = sum(
         1
         for before, after in zip(opp_gotis_before, opp_gotis_after)
@@ -61,9 +62,9 @@ def calculate_dense_reward(
     )
 
     if captured_opponents > 0:
-        reward += 15.0 * captured_opponents
+        reward += 10.0 * captured_opponents  # Reduced from 15.0
 
-    # Getting captured
+    # Getting captured (reduced from 15.0)
     got_captured = sum(
         1
         for before, after in zip(my_gotis_before, my_gotis_after)
@@ -71,6 +72,6 @@ def calculate_dense_reward(
     )
 
     if got_captured > 0:
-        reward -= 15.0 * got_captured
+        reward -= 10.0 * got_captured  # Reduced from 15.0
 
     return reward / 100
