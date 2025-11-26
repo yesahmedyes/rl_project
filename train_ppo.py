@@ -15,7 +15,7 @@ from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 
 from training.config import get_config, TrainingConfig
-from training.vec_env_factory import make_vec_env, SelfPlayVecEnv
+from env.vec_env_factory import make_vec_env, SelfPlayVecEnv
 from training.evaluate import quick_eval, evaluate_alternating_players
 
 
