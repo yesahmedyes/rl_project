@@ -1,53 +1,10 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-from typing import Optional, Any
+from gymnasium import spaces
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.vec_env import VecEnv
-import warnings
-
-
-class BCRolloutBuffer(RolloutBuffer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.raw_states = None
-        self.heuristic_actions = None
-
-    def reset(self) -> None:
-        super().reset()
-
-        self.raw_states = []
-        self.heuristic_actions = []
-
-    def add(
-        self,
-        obs: np.ndarray,
-        action: np.ndarray,
-        reward: np.ndarray,
-        episode_start: np.ndarray,
-        value: torch.Tensor,
-        log_prob: torch.Tensor,
-        action_masks: Optional[np.ndarray] = None,
-        raw_state: Optional[Any] = None,
-        heuristic_action: Optional[int] = None,
-    ) -> None:
-        # Call parent add method
-        if hasattr(super(), "add"):
-            # For MaskableRolloutBuffer
-            super().add(
-                obs, action, reward, episode_start, value, log_prob, action_masks
-            )
-        else:
-            super().add(obs, action, reward, episode_start, value, log_prob)
-
-        # Store raw state and heuristic action if provided
-        if raw_state is not None:
-            self.raw_states.append(raw_state)
-
-        if heuristic_action is not None:
-            self.heuristic_actions.append(heuristic_action)
 
 
 class BCMaskablePPO(MaskablePPO):
@@ -68,8 +25,9 @@ class BCMaskablePPO(MaskablePPO):
         self.bc_loss_decay_rate = bc_loss_decay_rate
         self.bc_loss_min_coef = bc_loss_min_coef
 
-        # Storage for heuristic actions during rollout collection
-        self.current_heuristic_actions = {}
+        # Storage for BC data collected during rollout collection
+        self.bc_observations = []
+        self.bc_actions = []
 
         # Initialize heuristic policy if BC loss is enabled
         if self.use_bc_loss:
@@ -98,8 +56,9 @@ class BCMaskablePPO(MaskablePPO):
         n_steps = 0
         rollout_buffer.reset()
 
-        # Clear heuristic actions storage
-        self.current_heuristic_actions = {}
+        # Clear BC storage
+        self.bc_observations = []
+        self.bc_actions = []
 
         if use_masking:
             action_masks_data = env.env_method("action_masks")
@@ -113,15 +72,13 @@ class BCMaskablePPO(MaskablePPO):
             # Get actions and values from policy
             with torch.no_grad():
                 obs_tensor = torch.as_tensor(self._last_obs).to(self.device)
-                actions, values, log_probs = self.policy(obs_tensor)
+                actions, values, log_probs = self.policy(
+                    obs_tensor, action_masks=self._last_action_masks
+                )
                 actions_cpu = actions.cpu().numpy()
 
-            # Compute heuristic actions if BC loss is enabled
-            heuristic_actions_batch = None
-
+            # Compute heuristic actions and store BC data if BC loss is enabled
             if self.use_bc_loss and self.bc_loss_coef_current > 0:
-                heuristic_actions_batch = []
-
                 # Get raw game states from environments
                 for env_idx in range(env.num_envs):
                     try:
@@ -156,19 +113,15 @@ class BCMaskablePPO(MaskablePPO):
                         # If we can't get heuristic action, skip
                         heuristic_action = None
 
-                    heuristic_actions_batch.append(heuristic_action)
+                    # Store BC sample if we have a valid heuristic action
+                    if heuristic_action is not None:
+                        self.bc_observations.append(
+                            np.array(self._last_obs[env_idx], copy=True)
+                        )
+                        self.bc_actions.append(int(heuristic_action))
 
-                # Store for this step
-                self.current_heuristic_actions[n_steps] = heuristic_actions_batch
-
-            # Rescale and perform action
+            # Perform action in the environment
             clipped_actions = actions_cpu
-
-            # Clip the actions to avoid out of bound error
-            if isinstance(self.action_space, torch.Tensor):
-                clipped_actions = np.clip(
-                    actions_cpu, self.action_space.low, self.action_space.high
-                )
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 
@@ -195,9 +148,6 @@ class BCMaskablePPO(MaskablePPO):
 
             self._update_info_buffer(infos)
             n_steps += 1
-
-            # Keep actions as numpy for buffer, convert to tensor if needed for other operations
-            # (The buffer expects numpy arrays, not tensors)
 
             # Handle timeout (episode truncation)
             for idx, done in enumerate(dones):
@@ -272,31 +222,29 @@ class BCMaskablePPO(MaskablePPO):
 
         continue_training = True
 
-        # Prepare heuristic actions tensor if BC is enabled
-        heuristic_actions_tensor = None
+        # Prepare BC data tensors if BC is enabled
+        bc_obs_tensor = None
+        bc_actions_tensor = None
+        bc_indices = None
+        bc_start_idx = 0
+        bc_batch_size = 0
+        bc_num_samples = 0
 
         if (
             self.use_bc_loss
             and self.bc_loss_coef_current > 0
-            and self.current_heuristic_actions
+            and hasattr(self, "bc_observations")
+            and len(self.bc_observations) > 0
         ):
-            # Flatten heuristic actions from dict to array
-            all_heuristic_actions = []
-
-            for step_idx in sorted(self.current_heuristic_actions.keys()):
-                all_heuristic_actions.extend(self.current_heuristic_actions[step_idx])
-
-            # Convert to tensor, handling None values
-            heuristic_actions_array = np.array(all_heuristic_actions)
-            valid_mask = np.array([a is not None for a in all_heuristic_actions])
-
-            if valid_mask.sum() > 0:
-                heuristic_actions_tensor = torch.as_tensor(heuristic_actions_array).to(
-                    self.device
-                )
-                valid_mask_tensor = torch.as_tensor(valid_mask).to(self.device)
-            else:
-                heuristic_actions_tensor = None
+            bc_obs_tensor = torch.as_tensor(
+                np.array(self.bc_observations), device=self.device
+            )
+            bc_actions_tensor = torch.as_tensor(
+                np.array(self.bc_actions), device=self.device, dtype=torch.long
+            )
+            bc_num_samples = bc_actions_tensor.shape[0]
+            bc_indices = np.random.permutation(bc_num_samples)
+            bc_batch_size = min(self.batch_size, bc_num_samples)
 
         # Train for n_epochs epochs
         for epoch in range(self.n_epochs):
@@ -307,9 +255,11 @@ class BCMaskablePPO(MaskablePPO):
                 self.rollout_buffer.get(self.batch_size)
             ):
                 actions = rollout_data.actions
-
-                if isinstance(self.action_space, torch.Tensor):
+                # Ensure correct action shape/dtype
+                if isinstance(self.action_space, spaces.Discrete):
                     actions = actions.long().flatten()
+                else:
+                    actions = actions.reshape((-1,) + self.action_space.shape)
 
                 # Get action masks if available
                 action_masks = None
@@ -377,16 +327,32 @@ class BCMaskablePPO(MaskablePPO):
                 # Add Behavior Cloning loss if enabled
                 if (
                     self.use_bc_loss
-                    and heuristic_actions_tensor is not None
+                    and bc_obs_tensor is not None
+                    and bc_actions_tensor is not None
                     and self.bc_loss_coef_current > 0
+                    and bc_num_samples > 0
                 ):
-                    # Compute BC loss for this batch
-                    bc_loss = self._compute_bc_loss_for_batch(
-                        rollout_data.observations,
-                        heuristic_actions_tensor,
-                        valid_mask_tensor,
-                        action_masks,
-                        rollout_idx,
+                    # Sample a BC mini-batch
+                    if bc_start_idx + bc_batch_size > bc_num_samples:
+                        bc_indices = np.random.permutation(bc_num_samples)
+                        bc_start_idx = 0
+
+                    batch_bc_indices = bc_indices[
+                        bc_start_idx : bc_start_idx + bc_batch_size
+                    ]
+                    bc_start_idx += bc_batch_size
+
+                    bc_obs_batch = bc_obs_tensor[batch_bc_indices]
+                    bc_actions_batch = bc_actions_tensor[batch_bc_indices]
+
+                    # Get policy distribution and compute cross-entropy loss
+                    bc_distribution = self.policy.get_distribution(bc_obs_batch)
+                    bc_logits = bc_distribution.distribution.logits
+
+                    bc_loss = F.cross_entropy(
+                        bc_logits,
+                        bc_actions_batch,
+                        reduction="mean",
                     )
 
                     if bc_loss is not None:
@@ -453,51 +419,6 @@ class BCMaskablePPO(MaskablePPO):
             self.logger.record(
                 "train/std", torch.exp(self.policy.log_std).mean().item()
             )
-
-    def _compute_bc_loss_for_batch(
-        self,
-        observations: torch.Tensor,
-        heuristic_actions: torch.Tensor,
-        valid_mask: torch.Tensor,
-        action_masks: Optional[torch.Tensor],
-        batch_idx: int,
-    ) -> Optional[torch.Tensor]:
-        try:
-            # Get policy distribution
-            distribution = self.policy.get_distribution(
-                observations, action_masks=action_masks
-            )
-
-            # Get action log probabilities
-            action_log_probs = distribution.distribution.logits
-
-            # Compute cross-entropy loss with heuristic actions
-            # Only for samples with valid heuristic actions
-            batch_size = observations.shape[0]
-
-            # Get corresponding heuristic actions for this batch
-            start_idx = batch_idx * batch_size
-            end_idx = start_idx + batch_size
-
-            if end_idx <= len(heuristic_actions):
-                batch_heuristic = heuristic_actions[start_idx:end_idx]
-                batch_valid = valid_mask[start_idx:end_idx]
-
-                if batch_valid.sum() > 0:
-                    # Compute cross-entropy only for valid samples
-                    ce_loss = F.cross_entropy(
-                        action_log_probs[batch_valid],
-                        batch_heuristic[batch_valid].long(),
-                        reduction="mean",
-                    )
-                    return ce_loss
-
-            return None
-
-        except Exception as e:
-            # Silently skip BC loss if there's an error
-            warnings.warn(f"BC loss computation failed: {e}")
-            return None
 
     def get_bc_loss_coef(self) -> float:
         return self.bc_loss_coef_current if self.use_bc_loss else 0.0
