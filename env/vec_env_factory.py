@@ -190,7 +190,7 @@ class NeuralNetworkPolicyWrapper:
             dist = self.policy.get_distribution(obs_tensor)
             # Apply mask
             action_logits = dist.distribution.logits.clone()
-            action_logits[mask == 0] = float("-inf")
+            action_logits[0, mask == 0] = float("-inf")
             action = action_logits.argmax().item()
 
         # Convert back to tuple

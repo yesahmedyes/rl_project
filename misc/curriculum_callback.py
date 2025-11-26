@@ -28,7 +28,7 @@ class CurriculumCallback(BaseCallback):
         self.evaluations = []
 
     def _on_step(self) -> bool:
-        if self.n_calls % self.eval_freq == 0:
+        if self.num_timesteps % self.eval_freq == 0:  # ✅ Use num_timesteps
             self._evaluate_and_maybe_advance()
 
         return True

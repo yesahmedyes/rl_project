@@ -42,7 +42,7 @@ echo ""
 echo "=============================================="
 echo "Launching One-hot encoding training on GPU 1"
 echo "=============================================="
-CUDA_VISIBLE_DEVICES=1 python -u train_ppo.py \
+CUDA_VISIBLE_DEVICES=2 python -u train_ppo.py \
     --encoding onehot \
     --gpu 2 \
     > "$LAUNCH_LOG_DIR/onehot.log" 2>&1 &
@@ -55,7 +55,7 @@ echo ""
 echo "=============================================="  
 echo "Launching One-hot+BC encoding training on GPU 1"
 echo "=============================================="
-CUDA_VISIBLE_DEVICES=1 python -u train_ppo.py \
+CUDA_VISIBLE_DEVICES=3 python -u train_ppo.py \
     --encoding onehot \
     --gpu 3 \
     --use-bc-loss \

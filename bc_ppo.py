@@ -88,6 +88,7 @@ class BCMaskablePPO(MaskablePPO):
         callback,
         rollout_buffer: RolloutBuffer,
         n_rollout_steps: int,
+        use_masking: bool = True,
     ) -> bool:
         assert self._last_obs is not None, "No previous observation was provided"
 
@@ -165,6 +166,14 @@ class BCMaskablePPO(MaskablePPO):
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 
+            # Get action masks for next step
+            action_masks = np.array(
+                [
+                    info.get("action_masks", np.ones(self.action_space.n))
+                    for info in infos
+                ]
+            )
+
             self.num_timesteps += env.num_envs
 
             # Give access to local variables
@@ -201,10 +210,12 @@ class BCMaskablePPO(MaskablePPO):
                 self._last_episode_starts,
                 values,
                 log_probs,
+                action_masks=self._last_action_masks,
             )
 
             self._last_obs = new_obs
             self._last_episode_starts = dones
+            self._last_action_masks = action_masks
 
         # Compute returns and advantages
         with torch.no_grad():
