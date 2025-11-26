@@ -10,22 +10,16 @@ class TrainingConfig:
 
     # PPO hyperparameters
     learning_rate: float = 3e-4
-    n_steps: int = (
-        1024  # Steps per environment before update (reduced for faster updates)
-    )
-    batch_size: int = 512  # Minibatch size (reduced to match n_steps better)
-    n_epochs: int = 5  # Number of epochs when optimizing the surrogate loss (reduced to avoid overfitting)
+    n_steps: int = 1024  # Steps per environment before update
+    batch_size: int = 512  # Minibatch size
+    n_epochs: int = 5  # Number of epochs when optimizing the surrogate loss
     gamma: float = 0.99  # Discount factor
     gae_lambda: float = 0.95  # GAE parameter
     clip_range: float = 0.2  # PPO clipping parameter
     clip_range_vf: Optional[float] = None  # Clipping for value function
-    ent_coef: float = 0.1  # Entropy coefficient (increased for more exploration)
-    vf_coef: float = (
-        1.0  # Value function coefficient (increased for better value learning)
-    )
-    max_grad_norm: float = (
-        1.0  # Gradient clipping (increased to allow larger gradients)
-    )
+    ent_coef: float = 0.1  # Entropy coefficient
+    vf_coef: float = 1.0  # Value function coefficient
+    max_grad_norm: float = 1.0  # Gradient clipping
 
     # Network architecture
     policy_kwargs: dict = None  # Will be set in __post_init__
@@ -36,18 +30,12 @@ class TrainingConfig:
     total_timesteps_stage3: int = 100_000_000
 
     # Curriculum learning
-    stage1_threshold: float = (
-        0.60  # Win rate to advance from stage 1 (lowered from 0.75)
-    )
-    stage2_threshold: float = (
-        0.60  # Win rate to advance from stage 2 (lowered from 0.75)
-    )
-    eval_freq: int = 500_000  # Evaluate every N timesteps
-    n_eval_episodes: int = (
-        1000  # Number of episodes for evaluation (reduced for faster iteration)
-    )
+    stage1_threshold: float = 0.75
+    stage2_threshold: float = 0.75
+    eval_freq: int = 100_000  # Evaluate every N timesteps
+    n_eval_episodes: int = 1000  # Number of episodes for evaluation
 
-    self_play_opponent_update_freq: int = 500_000  # Update opponent every N timesteps
+    self_play_opponent_update_freq: int = 100_000  # Update opponent every N timesteps
 
     # Logging and saving
     log_dir: str = "./logs"
