@@ -60,12 +60,12 @@ class TrainingConfig:
         if self.policy_kwargs is None:
             if self.encoding_type == "handcrafted":
                 self.policy_kwargs = {
-                    "net_arch": [{"pi": [256, 256, 128], "vf": [256, 256, 128]}],
+                    "net_arch": {"pi": [256, 256, 128], "vf": [256, 256, 128]},
                     "activation_fn": "torch.nn.ReLU",
                 }
             elif self.encoding_type == "onehot":
                 self.policy_kwargs = {
-                    "net_arch": [{"pi": [1024, 1024, 512], "vf": [1024, 1024, 512]}],
+                    "net_arch": {"pi": [1024, 1024, 512], "vf": [1024, 1024, 512]},
                     "activation_fn": "torch.nn.ReLU",
                 }
             else:

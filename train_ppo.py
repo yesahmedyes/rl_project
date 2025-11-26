@@ -181,6 +181,7 @@ def train_curriculum(
     print("\n" + "=" * 60)
     print("Starting Curriculum Training")
     print(f"Encoding Type: {encoding_type}")
+    print(f"Use BC Loss: {use_bc_loss}")
     print(f"GPU ID: {gpu_id}")
     print("=" * 60 + "\n")
 
