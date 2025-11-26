@@ -27,10 +27,8 @@ class LudoGymEnv(gym.Env):
         self.render_mode = render_mode
         self.opponent_type = opponent_type
 
-        # Initialize the Ludo environment
         self.env = Ludo(render_mode="" if render_mode is None else render_mode)
 
-        # Set up opponent policy
         if opponent_policy is not None:
             self.opponent_policy = opponent_policy
         elif opponent_type == "random":
@@ -38,12 +36,10 @@ class LudoGymEnv(gym.Env):
         elif opponent_type == "heuristic":
             self.opponent_policy = Policy_Heuristic()
         elif opponent_type == "self":
-            # Will be set externally for self-play
             self.opponent_policy = None
         else:
             raise ValueError(f"Unknown opponent_type: {opponent_type}")
 
-        # Determine state dimensions based on encoding type
         if encoding_type == "handcrafted":
             self.state_dim = 70
         elif encoding_type == "onehot":
@@ -51,10 +47,8 @@ class LudoGymEnv(gym.Env):
         else:
             raise ValueError(f"Unknown encoding_type: {encoding_type}")
 
-        # Maximum possible actions: 3 dice rolls × 4 gotis = 12
         self.max_actions = 12
 
-        # Define observation and action spaces
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(self.state_dim,), dtype=np.float32
         )
@@ -67,7 +61,6 @@ class LudoGymEnv(gym.Env):
         self.steps_taken = 0
 
     def _encode_state(self, state) -> np.ndarray:
-        """Encode the game state based on the encoding type."""
         if self.encoding_type == "handcrafted":
             _, _, encoded = encode_handcrafted_state(state)
         elif self.encoding_type == "onehot":
@@ -78,50 +71,30 @@ class LudoGymEnv(gym.Env):
         return encoded
 
     def _action_to_tuple(self, action: int) -> Tuple[int, int]:
-        """
-        Convert discrete action (0-11) to (dice_index, goti_index).
-
-        Mapping:
-        - action 0-3: dice_index=0, goti_index=0-3
-        - action 4-7: dice_index=1, goti_index=0-3
-        - action 8-11: dice_index=2, goti_index=0-3
-        """
         dice_index = action // 4
         goti_index = action % 4
+
         return (dice_index, goti_index)
 
     def _tuple_to_action(self, action_tuple: Tuple[int, int]) -> int:
-        """Convert (dice_index, goti_index) to discrete action."""
         dice_index, goti_index = action_tuple
+
         return dice_index * 4 + goti_index
 
     def _get_action_mask(self) -> np.ndarray:
-        """
-        Get a binary mask indicating which actions are valid.
-
-        Returns:
-            np.ndarray: Binary mask of shape (max_actions,)
-        """
         mask = np.zeros(self.max_actions, dtype=np.int8)
 
-        # Get valid actions from the environment
         action_space = self.env.get_action_space()
 
-        # Convert each valid action tuple to discrete action and mark as valid
         for action_tuple in action_space:
             action = self._tuple_to_action(action_tuple)
+
             if action < self.max_actions:
                 mask[action] = 1
 
         return mask
 
     def _play_opponent_turn(self) -> Tuple[Any, bool]:
-        """
-        Let the opponent play until it's the agent's turn again.
-
-        Returns:
-            Tuple of (state, terminated)
-        """
         state = self.current_state
         terminated = state[3]
         player_turn = state[4]
@@ -130,7 +103,6 @@ class LudoGymEnv(gym.Env):
             action_space = self.env.get_action_space()
 
             if self.opponent_policy is None:
-                # For self-play when opponent policy not yet set
                 action = None if not action_space else action_space[0]
             else:
                 action = self.opponent_policy.get_action(state, action_space)
@@ -144,12 +116,6 @@ class LudoGymEnv(gym.Env):
     def reset(
         self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """
-        Reset the environment to initial state.
-
-        Returns:
-            Tuple of (observation, info)
-        """
         super().reset(seed=seed)
 
         # Reset the Ludo environment
@@ -160,9 +126,10 @@ class LudoGymEnv(gym.Env):
         # If agent is player 1, let opponent (player 0) play first
         if self.agent_player == 1:
             self.current_state, terminated = self._play_opponent_turn()
+
             if terminated:
-                # Game ended before agent could play
                 obs = self._encode_state(self.current_state)
+
                 info = {
                     "action_mask": self._get_action_mask(),
                     "terminated": True,
@@ -181,15 +148,8 @@ class LudoGymEnv(gym.Env):
         return obs, info
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        """
-        Execute one step in the environment.
+        # Returns (observation, reward, terminated, truncated, info)
 
-        Args:
-            action: Discrete action (0-11)
-
-        Returns:
-            Tuple of (observation, reward, terminated, truncated, info)
-        """
         self.steps_taken += 1
 
         # Store previous state for reward calculation
@@ -211,7 +171,7 @@ class LudoGymEnv(gym.Env):
                 if player_turn != self.agent_player:
                     self.current_state, terminated = self._play_opponent_turn()
 
-            reward = -0.05 / 100
+            reward = 0.0
             obs = self._encode_state(self.current_state)
 
             info = {
@@ -230,14 +190,17 @@ class LudoGymEnv(gym.Env):
         if action >= self.max_actions or action_mask[action] == 0:
             # Invalid action - penalize and terminate
             obs = self._encode_state(self.current_state)
+
             reward = -10.0
             terminated = True
             truncated = False
+
             info = {
                 "action_mask": action_mask,
                 "invalid_action": True,
                 "agent_won": False,
             }
+
             return obs, reward, terminated, truncated, info
 
         # Execute action

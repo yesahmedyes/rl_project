@@ -1,4 +1,4 @@
-from env.ludo import DESTINATION, SAFE_SQUARES, STARTING
+from ludo import DESTINATION, SAFE_SQUARES, STARTING
 
 
 def calculate_dense_reward(
@@ -11,7 +11,8 @@ def calculate_dense_reward(
     if terminated:
         return 100.0 if agent_won else -100.0
 
-    reward = -0.05
+    # reward = -0.05
+    reward = 0.0
 
     gotis_red_before, gotis_yellow_before, _, _, _ = state_before
     gotis_red_after, gotis_yellow_after, _, _, _ = state_after
