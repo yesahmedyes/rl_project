@@ -5,11 +5,11 @@ from typing import Optional
 @dataclass
 class TrainingConfig:
     encoding_type: str = "handcrafted"  # "handcrafted" or "onehot"
-    n_envs: int = 24
+    n_envs: int = 32
     agent_player: Optional[int] = None
 
     # PPO hyperparameters
-    learning_rate: float = 1e-4
+    learning_rate: float = 3e-4
     n_steps: int = 8192  # Steps per environment before update
     batch_size: int = 8192  # Minibatch size
     n_epochs: int = 8  # Number of epochs when optimizing the surrogate loss
@@ -63,10 +63,14 @@ class TrainingConfig:
                     "net_arch": {"pi": [256, 256, 128], "vf": [256, 256, 128]},
                     "activation_fn": "torch.nn.ReLU",
                 }
+
+                self.learning_rate = 1e-4
             elif self.encoding_type == "onehot":
                 self.policy_kwargs = {
                     "net_arch": {"pi": [1024, 1024, 512], "vf": [1024, 1024, 512]},
                     "activation_fn": "torch.nn.ReLU",
                 }
+
+                self.learning_rate = 3e-4
             else:
                 raise ValueError(f"Unknown encoding_type: {self.encoding_type}")

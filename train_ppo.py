@@ -21,6 +21,13 @@ warnings.filterwarnings(
     module="pygame.pkgdata",
 )
 
+warnings.filterwarnings(
+    "ignore",
+    message="env.get_action_space to get variables from other wrappers is deprecated and will be removed",
+    category=UserWarning,
+    module="gymnasium.core",
+)
+
 
 def train_stage(
     config: TrainingConfig,
