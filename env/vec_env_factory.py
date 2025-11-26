@@ -54,23 +54,6 @@ def make_vec_env(
     seed: int = 0,
     use_subprocess: bool = True,
 ) -> SubprocVecEnv:
-    """
-    Create a vectorized environment with multiple parallel Ludo environments.
-
-    Args:
-        n_envs: Number of parallel environments
-        encoding_type: "handcrafted" or "onehot"
-        opponent_type: "random", "heuristic", or "self"
-        opponent_policy: Custom opponent policy object
-        agent_player: Which player is the agent (0 or 1)
-        log_dir: Directory to save monitor logs
-        seed: Random seed
-        use_subprocess: If True, use SubprocVecEnv (parallel), else DummyVecEnv (sequential)
-
-    Returns:
-        Vectorized environment
-    """
-    # Create list of environment creation functions
     env_fns = [
         make_ludo_env(
             rank=i,
@@ -100,19 +83,6 @@ def make_eval_env(
     agent_player: int = 0,
     seed: int = 0,
 ):
-    """
-    Create a single evaluation environment.
-
-    Args:
-        encoding_type: "handcrafted" or "onehot"
-        opponent_type: "random", "heuristic", or "self"
-        opponent_policy: Custom opponent policy object
-        agent_player: Which player is the agent (0 or 1)
-        seed: Random seed
-
-    Returns:
-        Wrapped environment with action masking
-    """
     from env.ludo_gym_env import LudoGymEnv
 
     env = LudoGymEnv(
@@ -135,10 +105,6 @@ def make_eval_env(
 
 
 class SelfPlayVecEnv:
-    """
-    Wrapper for vectorized environments that handles self-play by updating opponent policies.
-    """
-
     def __init__(
         self,
         n_envs: int,
@@ -148,17 +114,6 @@ class SelfPlayVecEnv:
         seed: int = 0,
         use_subprocess: bool = True,
     ):
-        """
-        Initialize self-play vectorized environment.
-
-        Args:
-            n_envs: Number of parallel environments
-            encoding_type: "handcrafted" or "onehot"
-            agent_player: Which player is the agent (0 or 1)
-            log_dir: Directory to save monitor logs
-            seed: Random seed
-            use_subprocess: If True, use SubprocVecEnv (parallel), else DummyVecEnv (sequential)
-        """
         self.n_envs = n_envs
         self.encoding_type = encoding_type
         self.agent_player = agent_player
@@ -166,7 +121,6 @@ class SelfPlayVecEnv:
         self.seed = seed
         self.use_subprocess = use_subprocess
 
-        # Create initial vec env with random opponent
         self.vec_env = make_vec_env(
             n_envs=n_envs,
             encoding_type=encoding_type,
@@ -178,18 +132,8 @@ class SelfPlayVecEnv:
         )
 
     def update_opponent_policy(self, policy):
-        """
-        Update the opponent policy for self-play.
-
-        This requires recreating the vectorized environment with the new policy.
-
-        Args:
-            policy: New opponent policy
-        """
-        # Close existing environments
         self.vec_env.close()
 
-        # Create new vec env with updated opponent policy
         self.vec_env = make_vec_env(
             n_envs=self.n_envs,
             encoding_type=self.encoding_type,
@@ -202,9 +146,7 @@ class SelfPlayVecEnv:
         )
 
     def __getattr__(self, name):
-        """Delegate attribute access to the underlying vec_env."""
         return getattr(self.vec_env, name)
 
     def close(self):
-        """Close the vectorized environment."""
         self.vec_env.close()

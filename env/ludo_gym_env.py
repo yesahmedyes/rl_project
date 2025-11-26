@@ -191,7 +191,7 @@ class LudoGymEnv(gym.Env):
             # Invalid action - penalize and terminate
             obs = self._encode_state(self.current_state)
 
-            reward = -10.0
+            reward = -1.0
             terminated = True
             truncated = False
 
@@ -225,7 +225,7 @@ class LudoGymEnv(gym.Env):
             if terminated:
                 player_turn = self.current_state[4]
                 if player_turn == self.agent_player:
-                    agent_won = False  # Opponent won
+                    agent_won = False
 
         # Calculate reward
         reward = calculate_dense_reward(
@@ -253,14 +253,11 @@ class LudoGymEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def render(self):
-        """Render the environment."""
         if self.render_mode == "human":
             self.env.render()
 
     def close(self):
-        """Close the environment."""
         pass
 
     def set_opponent_policy(self, policy):
-        """Set the opponent policy (useful for self-play)."""
         self.opponent_policy = policy

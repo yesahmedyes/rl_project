@@ -1,4 +1,4 @@
-from ludo import DESTINATION, SAFE_SQUARES, STARTING
+from env.ludo import DESTINATION, SAFE_SQUARES, STARTING
 
 
 def calculate_dense_reward(

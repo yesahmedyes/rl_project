@@ -33,7 +33,6 @@ class BCRolloutBuffer(RolloutBuffer):
         raw_state: Optional[Any] = None,
         heuristic_action: Optional[int] = None,
     ) -> None:
-        """Add with optional raw state and heuristic action."""
         # Call parent add method
         if hasattr(super(), "add"):
             # For MaskableRolloutBuffer
@@ -46,37 +45,21 @@ class BCRolloutBuffer(RolloutBuffer):
         # Store raw state and heuristic action if provided
         if raw_state is not None:
             self.raw_states.append(raw_state)
+
         if heuristic_action is not None:
             self.heuristic_actions.append(heuristic_action)
 
 
 class BCMaskablePPO(MaskablePPO):
-    """
-    MaskablePPO with optional Behavior Cloning loss.
-
-    Adds a cross-entropy loss term that encourages the policy to match
-    a heuristic policy's action choices. The BC loss coefficient can decay
-    over time to gradually transition from imitation to pure RL.
-    """
-
     def __init__(
         self,
         *args,
         use_bc_loss: bool = False,
         bc_loss_coef: float = 1.0,
-        bc_loss_decay_rate: float = 0.0,
+        bc_loss_decay_rate: float = 1e-3,
         bc_loss_min_coef: float = 0.0,
         **kwargs,
     ):
-        """
-        Initialize BCMaskablePPO.
-
-        Args:
-            use_bc_loss: Enable behavior cloning loss
-            bc_loss_coef: Initial coefficient for BC loss
-            bc_loss_decay_rate: Decay rate for BC loss coefficient (per update)
-            bc_loss_min_coef: Minimum BC loss coefficient (decay stops here)
-        """
         super().__init__(*args, **kwargs)
 
         self.use_bc_loss = use_bc_loss
@@ -93,6 +76,7 @@ class BCMaskablePPO(MaskablePPO):
             from policies.policy_heuristic import Policy_Heuristic
 
             self.heuristic_policy = Policy_Heuristic()
+
             print(
                 f"Behavior Cloning enabled with initial coef={bc_loss_coef}, "
                 f"decay={bc_loss_decay_rate}, min={bc_loss_min_coef}"
@@ -105,11 +89,6 @@ class BCMaskablePPO(MaskablePPO):
         rollout_buffer: RolloutBuffer,
         n_rollout_steps: int,
     ) -> bool:
-        """
-        Collect experiences using the current policy and fill a RolloutBuffer.
-
-        Extended to compute and store heuristic actions for BC loss.
-        """
         assert self._last_obs is not None, "No previous observation was provided"
 
         # Switch to eval mode
@@ -132,6 +111,7 @@ class BCMaskablePPO(MaskablePPO):
 
             # Compute heuristic actions if BC loss is enabled
             heuristic_actions_batch = None
+
             if self.use_bc_loss and self.bc_loss_coef_current > 0:
                 heuristic_actions_batch = []
 
@@ -140,6 +120,7 @@ class BCMaskablePPO(MaskablePPO):
                     try:
                         # Try to get raw state from environment
                         raw_state = None
+
                         if hasattr(env, "get_attr"):
                             raw_state = env.get_attr(
                                 "current_state", indices=[env_idx]
@@ -188,6 +169,7 @@ class BCMaskablePPO(MaskablePPO):
 
             # Give access to local variables
             callback.update_locals(locals())
+
             if callback.on_step() is False:
                 return False
 
@@ -237,11 +219,6 @@ class BCMaskablePPO(MaskablePPO):
         return True
 
     def train(self) -> None:
-        """
-        Update policy using the currently gathered rollout buffer.
-
-        Overrides the base train() method to add behavior cloning loss.
-        """
         # Switch to train mode
         self.policy.set_training_mode(True)
 
@@ -263,6 +240,7 @@ class BCMaskablePPO(MaskablePPO):
 
         # Prepare heuristic actions tensor if BC is enabled
         heuristic_actions_tensor = None
+
         if (
             self.use_bc_loss
             and self.bc_loss_coef_current > 0
@@ -270,6 +248,7 @@ class BCMaskablePPO(MaskablePPO):
         ):
             # Flatten heuristic actions from dict to array
             all_heuristic_actions = []
+
             for step_idx in sorted(self.current_heuristic_actions.keys()):
                 all_heuristic_actions.extend(self.current_heuristic_actions[step_idx])
 
@@ -342,6 +321,7 @@ class BCMaskablePPO(MaskablePPO):
                     values_pred = rollout_data.old_values + torch.clamp(
                         values - rollout_data.old_values, -clip_range_vf, clip_range_vf
                     )
+
                 value_loss = F.mse_loss(rollout_data.returns, values_pred)
                 value_losses.append(value_loss.item())
 
@@ -350,6 +330,7 @@ class BCMaskablePPO(MaskablePPO):
                     entropy_loss = -torch.mean(-log_prob)
                 else:
                     entropy_loss = -torch.mean(entropy)
+
                 entropy_losses.append(entropy_loss.item())
 
                 # Total loss
@@ -381,13 +362,16 @@ class BCMaskablePPO(MaskablePPO):
                 # Calculate approximate form of reverse KL Divergence for early stopping
                 with torch.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
+
                     approx_kl_div = (
                         torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
                     )
+
                     approx_kl_divs.append(approx_kl_div)
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
                     continue_training = False
+
                     if self.verbose >= 1:
                         print(
                             f"Early stopping at step {epoch} due to reaching max kl: {approx_kl_div:.2f}"
@@ -402,6 +386,7 @@ class BCMaskablePPO(MaskablePPO):
                 torch.nn.utils.clip_grad_norm_(
                     self.policy.parameters(), self.max_grad_norm
                 )
+
                 self.policy.optimizer.step()
 
             if not continue_training:
@@ -443,19 +428,6 @@ class BCMaskablePPO(MaskablePPO):
         action_masks: Optional[torch.Tensor],
         batch_idx: int,
     ) -> Optional[torch.Tensor]:
-        """
-        Compute behavior cloning loss for a batch.
-
-        Args:
-            observations: Batch of observations
-            heuristic_actions: Heuristic policy's actions
-            valid_mask: Mask indicating which samples have valid heuristic actions
-            action_masks: Valid action masks
-            batch_idx: Current batch index
-
-        Returns:
-            BC loss, or None if not computable
-        """
         try:
             # Get policy distribution
             distribution = self.policy.get_distribution(
@@ -494,5 +466,4 @@ class BCMaskablePPO(MaskablePPO):
             return None
 
     def get_bc_loss_coef(self) -> float:
-        """Get the current BC loss coefficient."""
         return self.bc_loss_coef_current if self.use_bc_loss else 0.0
