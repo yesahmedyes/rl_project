@@ -5,6 +5,7 @@ Factory functions for creating vectorized Ludo environments.
 from typing import Optional, Callable, Any
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
+from sb3_contrib.common.wrappers import ActionMasker
 import os
 
 
@@ -33,7 +34,7 @@ def make_ludo_env(
         Callable that creates the environment
     """
 
-    def _init() -> Monitor:
+    def _init():
         from env.ludo_gym_env import LudoGymEnv
 
         env = LudoGymEnv(
@@ -45,6 +46,13 @@ def make_ludo_env(
 
         # Set seed for reproducibility
         env.reset(seed=seed + rank)
+
+        # Wrap with ActionMasker for MaskablePPO
+        def mask_fn(env):
+            # Return the action mask from the current state
+            return env.unwrapped._get_action_mask()
+
+        env = ActionMasker(env, mask_fn)
 
         # Wrap with Monitor for logging
         if log_dir is not None:
@@ -111,7 +119,7 @@ def make_eval_env(
     opponent_policy: Optional[Any] = None,
     agent_player: int = 0,
     seed: int = 0,
-) -> Monitor:
+):
     """
     Create a single evaluation environment.
 
@@ -123,7 +131,7 @@ def make_eval_env(
         seed: Random seed
 
     Returns:
-        Monitored environment
+        Wrapped environment with action masking
     """
     from env.ludo_gym_env import LudoGymEnv
 
@@ -135,6 +143,12 @@ def make_eval_env(
     )
 
     env.reset(seed=seed)
+
+    # Wrap with ActionMasker for MaskablePPO
+    def mask_fn(env):
+        return env.unwrapped._get_action_mask()
+
+    env = ActionMasker(env, mask_fn)
     env = Monitor(env)
 
     return env

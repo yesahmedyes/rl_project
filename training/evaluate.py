@@ -93,12 +93,15 @@ def evaluate_agent(
     Returns:
         Dictionary with evaluation statistics
     """
-    # Create evaluation environment
-    env = LudoGymEnv(
+    # Create evaluation environment (with ActionMasker)
+    from training.vec_env_factory import make_eval_env
+
+    env = make_eval_env(
         encoding_type=encoding_type,
         opponent_type=opponent_type,
         opponent_policy=opponent_policy,
         agent_player=agent_player,
+        seed=seed,
     )
 
     wins = 0
@@ -118,12 +121,8 @@ def evaluate_agent(
         steps = 0
 
         while not terminated:
-            action_mask = info.get("action_mask")
-
-            # Predict action
-            action, _ = model.predict(
-                obs, deterministic=use_deterministic, action_masks=action_mask
-            )
+            # Predict action (ActionMasker handles masks automatically)
+            action, _ = model.predict(obs, deterministic=use_deterministic)
 
             # Step environment
             obs, reward, terminated, truncated, info = env.step(int(action))
