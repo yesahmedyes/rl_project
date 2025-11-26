@@ -101,6 +101,12 @@ class BCMaskablePPO(MaskablePPO):
         # Clear heuristic actions storage
         self.current_heuristic_actions = {}
 
+        if use_masking:
+            action_masks_data = env.env_method("action_masks")
+            self._last_action_masks = np.array(action_masks_data)
+        else:
+            self._last_action_masks = None
+
         callback.on_rollout_start()
 
         while n_steps < n_rollout_steps:
@@ -166,13 +172,18 @@ class BCMaskablePPO(MaskablePPO):
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 
-            # Get action masks for next step
-            action_masks = np.array(
-                [
-                    info.get("action_masks", np.ones(self.action_space.n))
-                    for info in infos
-                ]
-            )
+            # Get action masks for next step (from new observations)
+            if use_masking:
+                action_masks = np.array(
+                    [
+                        info.get(
+                            "action_mask", np.ones(self.action_space.n, dtype=np.int8)
+                        )
+                        for info in infos
+                    ]
+                )
+            else:
+                action_masks = None
 
             self.num_timesteps += env.num_envs
 
@@ -203,19 +214,31 @@ class BCMaskablePPO(MaskablePPO):
                     rewards[idx] += self.gamma * terminal_value
 
             # Add to buffer
-            rollout_buffer.add(
-                self._last_obs,
-                actions,
-                rewards,
-                self._last_episode_starts,
-                values,
-                log_probs,
-                action_masks=self._last_action_masks,
-            )
+            if use_masking and self._last_action_masks is not None:
+                rollout_buffer.add(
+                    self._last_obs,
+                    actions,
+                    rewards,
+                    self._last_episode_starts,
+                    values,
+                    log_probs,
+                    action_masks=self._last_action_masks,
+                )
+            else:
+                rollout_buffer.add(
+                    self._last_obs,
+                    actions,
+                    rewards,
+                    self._last_episode_starts,
+                    values,
+                    log_probs,
+                )
 
             self._last_obs = new_obs
             self._last_episode_starts = dones
-            self._last_action_masks = action_masks
+
+            if use_masking:
+                self._last_action_masks = action_masks
 
         # Compute returns and advantages
         with torch.no_grad():

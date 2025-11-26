@@ -5,6 +5,10 @@ from sb3_contrib.common.wrappers import ActionMasker
 import os
 
 
+def _get_action_mask(env):
+    return env.unwrapped._get_action_mask()
+
+
 def make_ludo_env(
     rank: int,
     encoding_type: str = "handcrafted",
@@ -28,11 +32,7 @@ def make_ludo_env(
         env.reset(seed=seed + rank)
 
         # Wrap with ActionMasker for MaskablePPO
-        def mask_fn(env):
-            # Return the action mask from the current state
-            return env.unwrapped._get_action_mask()
-
-        env = ActionMasker(env, mask_fn)
+        env = ActionMasker(env, _get_action_mask)
 
         # Wrap with Monitor for logging
         if log_dir is not None:
@@ -95,10 +95,7 @@ def make_eval_env(
     env.reset(seed=seed)
 
     # Wrap with ActionMasker for MaskablePPO
-    def mask_fn(env):
-        return env.unwrapped._get_action_mask()
-
-    env = ActionMasker(env, mask_fn)
+    env = ActionMasker(env, _get_action_mask)
     env = Monitor(env)
 
     return env
