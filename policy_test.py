@@ -1,5 +1,7 @@
 from policies.policy_random import Policy_Random
 from policies.policy_heuristic import Policy_Heuristic
+from policies.milestone2 import Policy_Milestone2
+from policies.policy_snakes import Policy_Snakes
 from env.ludo import Ludo
 from tqdm import tqdm
 
@@ -35,6 +37,7 @@ print(
     get_win_percentages(
         10000,
         Policy_Heuristic(),
-        Policy_Random(),
+        # Policy_Milestone2(),
+        Policy_Snakes(checkpoint_path="./models/snakes/latest_handcrafted.zip"),
     )
 )
