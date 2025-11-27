@@ -1,5 +1,5 @@
 from typing import Optional, Callable, Any
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecEnv
 from stable_baselines3.common.monitor import Monitor
 from sb3_contrib.common.wrappers import ActionMasker
 import os
@@ -101,7 +101,7 @@ def make_eval_env(
     return env
 
 
-class SelfPlayVecEnv:
+class SelfPlayVecEnv(VecEnv):
     def __init__(
         self,
         n_envs: int,
@@ -128,6 +128,13 @@ class SelfPlayVecEnv:
             use_subprocess=use_subprocess,
         )
 
+        # Initialize VecEnv base class
+        super().__init__(
+            num_envs=self.vec_env.num_envs,
+            observation_space=self.vec_env.observation_space,
+            action_space=self.vec_env.action_space,
+        )
+
     def update_opponent_policy(self, policy):
         self.vec_env.close()
 
@@ -145,11 +152,39 @@ class SelfPlayVecEnv:
             use_subprocess=self.use_subprocess,
         )
 
-    def __getattr__(self, name):
-        return getattr(self.vec_env, name)
+    # Implement required VecEnv methods
+    def reset(self):
+        return self.vec_env.reset()
+
+    def step_async(self, actions):
+        return self.vec_env.step_async(actions)
+
+    def step_wait(self):
+        return self.vec_env.step_wait()
 
     def close(self):
-        self.vec_env.close()
+        return self.vec_env.close()
+
+    def get_attr(self, attr_name, indices=None):
+        return self.vec_env.get_attr(attr_name, indices)
+
+    def set_attr(self, attr_name, value, indices=None):
+        return self.vec_env.set_attr(attr_name, value, indices)
+
+    def env_method(self, method_name, *method_args, indices=None, **method_kwargs):
+        return self.vec_env.env_method(
+            method_name, *method_args, indices=indices, **method_kwargs
+        )
+
+    def env_is_wrapped(self, wrapper_class, indices=None):
+        return self.vec_env.env_is_wrapped(wrapper_class, indices)
+
+    def seed(self, seed=None):
+        return self.vec_env.seed(seed)
+
+    def __getattr__(self, name):
+        # Fallback for any other attributes not explicitly defined
+        return getattr(self.vec_env, name)
 
 
 class NeuralNetworkPolicyWrapper:
