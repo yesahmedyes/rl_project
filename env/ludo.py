@@ -1,6 +1,5 @@
 import random
 from env.build_coordinates import build_input_list
-from env import renderer
 import copy
 
 STARTING = -1
@@ -148,6 +147,8 @@ class Ludo:
         return state
 
     def render(self):
+        from env import renderer
+
         build_input_list(self.states)
 
         frames = renderer.main()

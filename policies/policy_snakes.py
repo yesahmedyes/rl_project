@@ -25,6 +25,7 @@ class Policy_Snakes:
 
         self.model = MaskablePPO.load(checkpoint_path)
         self.policy = self.model.policy
+        self.policy.eval()
 
         print("Model loaded successfully!")
 
