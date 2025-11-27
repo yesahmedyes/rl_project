@@ -74,4 +74,4 @@ def calculate_dense_reward(
     if got_captured > 0:
         reward -= 10.0 * got_captured  # Reduced from 15.0
 
-    return reward / 100
+    return reward
