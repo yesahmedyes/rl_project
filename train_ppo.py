@@ -9,7 +9,6 @@ from env.vec_env_factory import make_vec_env, SelfPlayVecEnv
 from evaluate import evaluate_alternating_players
 from misc.curriculum_callback import CurriculumCallback
 from misc.selfplay_callback import SelfPlayCallback
-from bc_ppo import BCMaskablePPO
 
 import warnings
 
@@ -94,9 +93,6 @@ def train_stage(
             elif policy_kwargs["activation_fn"] == "torch.nn.Tanh":
                 policy_kwargs["activation_fn"] = torch.nn.Tanh
 
-        # Use BCMaskablePPO if behavior cloning is enabled
-        model_class = BCMaskablePPO if config.use_bc_loss else MaskablePPO
-
         model_kwargs = {
             "policy": MaskableActorCriticPolicy,
             "env": vec_env,
@@ -118,14 +114,7 @@ def train_stage(
             "seed": config.seed,
         }
 
-        # Add BC-specific parameters if using BCMaskablePPO
-        if config.use_bc_loss:
-            model_kwargs["use_bc_loss"] = config.use_bc_loss
-            model_kwargs["bc_loss_coef"] = config.bc_loss_coef
-            model_kwargs["bc_loss_decay_rate"] = config.bc_loss_decay_rate
-            model_kwargs["bc_loss_min_coef"] = config.bc_loss_min_coef
-
-        model = model_class(**model_kwargs)
+        model = MaskablePPO(**model_kwargs)
     else:
         print("Continuing training with existing model...")
         model.set_env(vec_env)
@@ -179,14 +168,12 @@ def train_curriculum(
     encoding_type: str = "handcrafted",
     gpu_id: int = 0,
     resume_from: str = None,
-    use_bc_loss: bool = False,
     learning_rate: float = 3e-4,
     ent_coef: float = 0.1,
     net_arch: list = None,
 ):
     config = TrainingConfig(
         encoding_type=encoding_type,
-        use_bc_loss=use_bc_loss,
         learning_rate=learning_rate,
         ent_coef=ent_coef,
         net_arch=net_arch,
@@ -195,7 +182,6 @@ def train_curriculum(
     print("\n" + "=" * 60)
     print("Starting Curriculum Training")
     print(f"Encoding Type: {encoding_type}")
-    print(f"Use BC Loss: {use_bc_loss}")
     print(f"Learning Rate: {learning_rate}")
     print(f"Entropy Coefficient: {ent_coef}")
     print(f"Network Architecture: {config.net_arch}")
@@ -206,9 +192,7 @@ def train_curriculum(
     model = None
     if resume_from is not None:
         print(f"Loading model from {resume_from}...")
-        # Load with appropriate class based on config
-        model_class = BCMaskablePPO if config.use_bc_loss else MaskablePPO
-        model = model_class.load(resume_from)
+        model = MaskablePPO.load(resume_from)
 
     # Stage 1: Train vs Random
     model = train_stage(
@@ -272,12 +256,6 @@ def main():
         choices=["handcrafted", "onehot"],
         help="State encoding type",
     )
-    parser.add_argument(
-        "--use-bc-loss",
-        default=False,
-        action="store_true",
-        help="Enable behavior cloning loss to imitate heuristic policy",
-    )
     parser.add_argument("--gpu", type=int, default=0, help="GPU device ID")
     parser.add_argument(
         "--resume",
@@ -313,7 +291,6 @@ def main():
         encoding_type=args.encoding,
         gpu_id=args.gpu,
         resume_from=args.resume,
-        use_bc_loss=args.use_bc_loss,
         learning_rate=args.learning_rate,
         ent_coef=args.ent_coef,
         net_arch=args.net_arch,
