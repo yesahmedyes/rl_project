@@ -34,3 +34,15 @@ ONEHOT_PID=$!
 echo "Started one-hot training (PID: $ONEHOT_PID)"
 echo "Log file: $LAUNCH_LOG_DIR/onehot.log"
 echo ""
+
+echo "=============================================="
+echo "Launching One-hot encoding training with 1024"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=3 python -u train_ppo.py \
+    --encoding onehot \
+    --gpu 0 \
+    > "$LAUNCH_LOG_DIR/onehot.log" 2>&1 &
+ONEHOT_PID=$!
+echo "Started one-hot training (PID: $ONEHOT_PID)"
+echo "Log file: $LAUNCH_LOG_DIR/onehot.log"
+echo ""

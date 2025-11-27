@@ -1,7 +1,6 @@
 import os
 import argparse
 import torch
-from stable_baselines3.common.callbacks import CheckpointCallback
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 
@@ -134,7 +133,7 @@ def train_stage(
     # Create callbacks
     callbacks = []
 
-    # Curriculum callback for evaluation
+    # Curriculum callback for evaluation (also saves best models)
     curriculum_callback = CurriculumCallback(
         config=config,
         eval_freq=config.eval_freq,
@@ -145,15 +144,6 @@ def train_stage(
     )
     curriculum_callback.current_stage = stage
     callbacks.append(curriculum_callback)
-
-    checkpoint_callback = CheckpointCallback(
-        save_freq=config.save_freq // config.n_envs,
-        save_path=config.save_dir,
-        name_prefix=f"stage{stage}_{config.encoding_type}",
-        save_replay_buffer=False,
-        save_vecnormalize=False,
-    )
-    callbacks.append(checkpoint_callback)
 
     # Self-play callback (only for stage 3)
     if stage == 3:
@@ -173,12 +163,11 @@ def train_stage(
         reset_num_timesteps=False,  # Continue counting timesteps
     )
 
-    # Save final model
-    final_model_path = os.path.join(
-        config.save_dir, f"final_stage{stage}_{config.encoding_type}.zip"
-    )
-    model.save(final_model_path)
-    print(f"\nSaved final model to {final_model_path}")
+    # Save latest model
+    latest_model_name = config.get_model_name(prefix="latest")
+    latest_model_path = os.path.join(config.save_dir, latest_model_name)
+    model.save(latest_model_path)
+    print(f"\nSaved latest model to {latest_model_path}")
 
     # Close environment
     vec_env.close()
@@ -191,13 +180,25 @@ def train_curriculum(
     gpu_id: int = 0,
     resume_from: str = None,
     use_bc_loss: bool = False,
+    learning_rate: float = 3e-4,
+    ent_coef: float = 0.1,
+    net_arch: list = None,
 ):
-    config = TrainingConfig(encoding_type=encoding_type, use_bc_loss=use_bc_loss)
+    config = TrainingConfig(
+        encoding_type=encoding_type,
+        use_bc_loss=use_bc_loss,
+        learning_rate=learning_rate,
+        ent_coef=ent_coef,
+        net_arch=net_arch,
+    )
 
     print("\n" + "=" * 60)
     print("Starting Curriculum Training")
     print(f"Encoding Type: {encoding_type}")
     print(f"Use BC Loss: {use_bc_loss}")
+    print(f"Learning Rate: {learning_rate}")
+    print(f"Entropy Coefficient: {ent_coef}")
+    print(f"Network Architecture: {config.net_arch}")
     print(f"GPU ID: {gpu_id}")
     print("=" * 60 + "\n")
 
@@ -284,6 +285,26 @@ def main():
         default=None,
         help="Path to model checkpoint to resume from",
     )
+    parser.add_argument(
+        "--learning-rate",
+        "--lr",
+        type=float,
+        default=3e-4,
+        help="Learning rate for the optimizer (default: 3e-4)",
+    )
+    parser.add_argument(
+        "--ent-coef",
+        type=float,
+        default=0.1,
+        help="Entropy coefficient for exploration (default: 0.1)",
+    )
+    parser.add_argument(
+        "--net-arch",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Network architecture as space-separated integers (e.g., 512 512 256)",
+    )
 
     args = parser.parse_args()
 
@@ -293,6 +314,9 @@ def main():
         gpu_id=args.gpu,
         resume_from=args.resume,
         use_bc_loss=args.use_bc_loss,
+        learning_rate=args.learning_rate,
+        ent_coef=args.ent_coef,
+        net_arch=args.net_arch,
     )
 
 

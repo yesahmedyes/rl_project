@@ -22,6 +22,7 @@ class TrainingConfig:
     max_grad_norm: float = 1.0  # Gradient clipping
 
     # Network architecture
+    net_arch: list = None  # Network architecture (will be applied to both pi and vf)
     policy_kwargs: dict = None  # Will be set in __post_init__
 
     # Training settings
@@ -57,16 +58,33 @@ class TrainingConfig:
     verbose: int = 1
 
     def __post_init__(self):
+        # Set default net_arch if not provided
+        if self.net_arch is None:
+            self.net_arch = [512, 512, 256]
+
         if self.policy_kwargs is None:
             if self.encoding_type == "handcrafted":
                 self.policy_kwargs = {
-                    "net_arch": {"pi": [512, 512, 256], "vf": [512, 512, 256]},
+                    "net_arch": {"pi": self.net_arch, "vf": self.net_arch},
                     "activation_fn": "torch.nn.ReLU",
                 }
             elif self.encoding_type == "onehot":
                 self.policy_kwargs = {
-                    "net_arch": {"pi": [512, 512, 256], "vf": [512, 512, 256]},
+                    "net_arch": {"pi": self.net_arch, "vf": self.net_arch},
                     "activation_fn": "torch.nn.ReLU",
                 }
             else:
                 raise ValueError(f"Unknown encoding_type: {self.encoding_type}")
+
+    def get_model_name(self, prefix: str = "") -> str:
+        parts = []
+
+        if prefix:
+            parts.append(prefix)
+
+        parts.append(self.encoding_type)
+        parts.append(f"lr{self.learning_rate:.0e}")
+        parts.append(f"ent{self.ent_coef}")
+        parts.append(f"arch{self.net_arch[0]}")
+
+        return "_".join(parts) + ".zip"

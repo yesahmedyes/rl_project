@@ -71,10 +71,8 @@ class CurriculumCallback(BaseCallback):
         if win_rate > self.best_win_rate:
             self.best_win_rate = win_rate
 
-            model_path = os.path.join(
-                self.config.save_dir,
-                f"best_model_stage{self.current_stage}_{self.config.encoding_type}.zip",
-            )
+            model_name = self.config.get_model_name(prefix="best")
+            model_path = os.path.join(self.config.save_dir, model_name)
 
             self.model.save(model_path)
 
