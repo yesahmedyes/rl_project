@@ -35,9 +35,9 @@ def get_win_percentages(n, policy1, policy2):
 
 print(
     get_win_percentages(
-        10000,
-        Policy_Heuristic(),
-        # Policy_Milestone2(),
+        1000,
+        # Policy_Heuristic(),
+        Policy_Milestone2(),
         Policy_Snakes(checkpoint_path="./models/snakes/latest_handcrafted.zip"),
     )
 )

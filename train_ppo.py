@@ -159,7 +159,7 @@ def train_stage(
     )
 
     # Save latest model
-    latest_model_name = config.get_model_name(prefix="latest")
+    latest_model_name = config.get_model_name(prefix="latest", stage=stage)
     latest_model_path = os.path.join(config.save_dir, latest_model_name)
     model.save(latest_model_path)
     print(f"\nSaved latest model to {latest_model_path}")

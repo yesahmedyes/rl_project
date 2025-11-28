@@ -9,7 +9,7 @@ class TrainingConfig:
     agent_player: Optional[int] = None
 
     # PPO hyperparameters
-    learning_rate: float = 5e-4
+    learning_rate: float = 3e-4
     n_steps: int = 1024  # Steps per environment before update
     batch_size: int = 512  # Minibatch size
     n_epochs: int = 5  # Number of epochs when optimizing the surrogate loss
@@ -17,7 +17,7 @@ class TrainingConfig:
     gae_lambda: float = 0.95  # GAE parameter
     clip_range: float = 0.2  # PPO clipping parameter
     clip_range_vf: Optional[float] = None  # Clipping for value function
-    ent_coef: float = 0.15  # Entropy coefficient
+    ent_coef: float = 0.10  # Entropy coefficient
     vf_coef: float = 1.0  # Value function coefficient
     max_grad_norm: float = 1.0  # Gradient clipping
 
@@ -26,23 +26,23 @@ class TrainingConfig:
     policy_kwargs: dict = None  # Will be set in __post_init__
 
     # Training settings
-    total_timesteps_stage1: int = 100_000_000
-    total_timesteps_stage2: int = 100_000_000
+    total_timesteps_stage1: int = 0
+    total_timesteps_stage2: int = 0
     total_timesteps_stage3: int = 100_000_000
 
     # Curriculum learning
     stage1_threshold: float = 0.75
     stage2_threshold: float = 0.75
-    eval_freq: int = 1_000_000  # Evaluate every N timesteps
+    eval_freq: int = 500_000  # Evaluate every N timesteps
     n_eval_episodes: int = 1000  # Number of episodes for evaluation
 
-    self_play_opponent_update_freq: int = 1_000_000  # Update opponent every N timesteps
+    self_play_opponent_update_freq: int = 500_000  # Update opponent every N timesteps
 
     # Logging and saving
     log_dir: str = "./logs"
     save_dir: str = "./models"
     tensorboard_log: str = "./logs/tensorboard"
-    save_freq: int = 1_000_000  # Save model every N timesteps
+    save_freq: int = 500_000  # Save model every N timesteps
 
     # Device settings
     device: str = "auto"  # "auto", "cuda", "cpu"
@@ -70,11 +70,14 @@ class TrainingConfig:
             else:
                 raise ValueError(f"Unknown encoding_type: {self.encoding_type}")
 
-    def get_model_name(self, prefix: str = "") -> str:
+    def get_model_name(self, prefix: str = "", stage: Optional[int] = None) -> str:
         parts = []
 
         if prefix:
             parts.append(prefix)
+
+        if stage is not None:
+            parts.append(f"stage{stage}")
 
         parts.append(self.encoding_type)
         parts.append(f"lr{self.learning_rate:.0e}")
