@@ -58,9 +58,9 @@ echo ""
 echo "=============================================="
 echo "Launching Handcrafted encoding training with 0.15 entropy coefficient and 5e-4 learning rate"
 echo "=============================================="
-CUDA_VISIBLE_DEVICES=3 python -u train_ppo.py \
+CUDA_VISIBLE_DEVICES=4 python -u train_ppo.py \
     --encoding handcrafted \
-    --resume /home/ubuntu/ahmed-etri/rl_project/models/v2/best_handcrafted_lr5e-04_ent0.15_arch512.zip \
+    --resume /home/ubuntu/ahmed-etri/rl_project/models/v2/best_handcrafted_lr3e-04_ent0.10_arch512.zip \
     --learning-rate 5e-4 \
     --ent-coef 0.15 \
     --reload-configs \
