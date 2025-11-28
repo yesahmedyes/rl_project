@@ -1,13 +1,5 @@
 import os
 import argparse
-import multiprocessing
-
-if __name__ == "__main__":
-    try:
-        multiprocessing.set_start_method("spawn", force=True)
-    except RuntimeError:
-        pass
-
 import torch
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
@@ -278,8 +270,6 @@ def train_curriculum(
 
 
 def main():
-    multiprocessing.set_start_method("spawn", force=True)
-
     parser = argparse.ArgumentParser(description="Train PPO agent for Ludo")
     parser.add_argument(
         "--encoding",
