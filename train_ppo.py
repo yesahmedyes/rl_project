@@ -212,26 +212,28 @@ def train_curriculum(
             update_model_hyperparameters(model, config)
 
     # Stage 1: Train vs Random
-    model = train_stage(
-        config=config,
-        stage=1,
-        opponent_type="random",
-        total_timesteps=config.total_timesteps_stage1,
-        model=model,
-        gpu_id=gpu_id,
-        reload_configs=reload_configs,
-    )
+    if config.total_timesteps_stage1 > 0:
+        model = train_stage(
+            config=config,
+            stage=1,
+            opponent_type="random",
+            total_timesteps=config.total_timesteps_stage1,
+            model=model,
+            gpu_id=gpu_id,
+            reload_configs=reload_configs,
+        )
 
     # Stage 2: Train vs Heuristic
-    model = train_stage(
-        config=config,
-        stage=2,
-        opponent_type="heuristic",
-        total_timesteps=config.total_timesteps_stage2,
-        model=model,
-        gpu_id=gpu_id,
-        reload_configs=reload_configs,
-    )
+    if config.total_timesteps_stage2 > 0:
+        model = train_stage(
+            config=config,
+            stage=2,
+            opponent_type="heuristic",
+            total_timesteps=config.total_timesteps_stage2,
+            model=model,
+            gpu_id=gpu_id,
+            reload_configs=reload_configs,
+        )
 
     # Stage 3: Self-Play
     model = train_stage(
