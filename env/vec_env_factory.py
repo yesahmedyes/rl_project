@@ -69,7 +69,7 @@ def make_vec_env(
 
     # Create vectorized environment
     if use_subprocess:
-        vec_env = SubprocVecEnv(env_fns, start_method="fork")
+        vec_env = SubprocVecEnv(env_fns, start_method="spawn")
     else:
         vec_env = DummyVecEnv(env_fns)
 

@@ -1,6 +1,13 @@
 import os
 import argparse
 import multiprocessing
+
+if __name__ == "__main__":
+    try:
+        multiprocessing.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass
+
 import torch
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
@@ -13,15 +20,6 @@ from misc.selfplay_callback import SelfPlayCallback
 from misc.update_config import update_model_hyperparameters
 
 import warnings
-
-# Set multiprocessing start method to 'spawn' for CUDA compatibility
-# This must be done before any subprocesses are created
-if __name__ == "__main__":
-    try:
-        multiprocessing.set_start_method("spawn", force=True)
-    except RuntimeError:
-        # Start method can only be set once per program
-        pass
 
 warnings.filterwarnings(
     "ignore",
