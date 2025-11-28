@@ -9,7 +9,7 @@ class TrainingConfig:
     agent_player: Optional[int] = None
 
     # PPO hyperparameters
-    learning_rate: float = 3e-4
+    learning_rate: float = 5e-4
     n_steps: int = 1024  # Steps per environment before update
     batch_size: int = 512  # Minibatch size
     n_epochs: int = 5  # Number of epochs when optimizing the surrogate loss
@@ -17,7 +17,7 @@ class TrainingConfig:
     gae_lambda: float = 0.95  # GAE parameter
     clip_range: float = 0.2  # PPO clipping parameter
     clip_range_vf: Optional[float] = None  # Clipping for value function
-    ent_coef: float = 0.1  # Entropy coefficient
+    ent_coef: float = 0.15  # Entropy coefficient
     vf_coef: float = 1.0  # Value function coefficient
     max_grad_norm: float = 1.0  # Gradient clipping
 
