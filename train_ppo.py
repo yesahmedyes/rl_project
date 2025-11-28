@@ -9,6 +9,7 @@ from env.vec_env_factory import make_vec_env, SelfPlayVecEnv
 from evaluate import evaluate_alternating_players
 from misc.curriculum_callback import CurriculumCallback
 from misc.selfplay_callback import SelfPlayCallback
+from misc.update_config import update_model_hyperparameters
 
 import warnings
 
@@ -34,6 +35,7 @@ def train_stage(
     total_timesteps: int,
     model=None,
     gpu_id: int = 0,
+    reload_configs: bool = False,
 ):
     print(f"\n{'#' * 60}")
     print(f"Starting Stage {stage}: Training vs {opponent_type}")
@@ -119,6 +121,10 @@ def train_stage(
         print("Continuing training with existing model...")
         model.set_env(vec_env)
 
+        # Reload hyperparameters from config if requested
+        if reload_configs:
+            update_model_hyperparameters(model, config)
+
     # Create callbacks
     callbacks = []
 
@@ -165,19 +171,26 @@ def train_stage(
 
 
 def train_curriculum(
-    encoding_type: str = "handcrafted",
+    encoding_type: str = None,
     gpu_id: int = 0,
     resume_from: str = None,
-    learning_rate: float = 3e-4,
-    ent_coef: float = 0.1,
+    learning_rate: float = None,
+    ent_coef: float = None,
     net_arch: list = None,
+    reload_configs: bool = False,
 ):
-    config = TrainingConfig(
-        encoding_type=encoding_type,
-        learning_rate=learning_rate,
-        ent_coef=ent_coef,
-        net_arch=net_arch,
-    )
+    config_kwargs = {}
+
+    if encoding_type is not None:
+        config_kwargs["encoding_type"] = encoding_type
+    if learning_rate is not None:
+        config_kwargs["learning_rate"] = learning_rate
+    if ent_coef is not None:
+        config_kwargs["ent_coef"] = ent_coef
+    if net_arch is not None:
+        config_kwargs["net_arch"] = net_arch
+
+    config = TrainingConfig(**config_kwargs)
 
     print("\n" + "=" * 60)
     print("Starting Curriculum Training")
@@ -194,6 +207,10 @@ def train_curriculum(
         print(f"Loading model from {resume_from}...")
         model = MaskablePPO.load(resume_from)
 
+        # Reload hyperparameters from config if requested
+        if reload_configs:
+            update_model_hyperparameters(model, config)
+
     # Stage 1: Train vs Random
     model = train_stage(
         config=config,
@@ -202,6 +219,7 @@ def train_curriculum(
         total_timesteps=config.total_timesteps_stage1,
         model=model,
         gpu_id=gpu_id,
+        reload_configs=reload_configs,
     )
 
     # Stage 2: Train vs Heuristic
@@ -212,6 +230,7 @@ def train_curriculum(
         total_timesteps=config.total_timesteps_stage2,
         model=model,
         gpu_id=gpu_id,
+        reload_configs=reload_configs,
     )
 
     # Stage 3: Self-Play
@@ -222,6 +241,7 @@ def train_curriculum(
         total_timesteps=config.total_timesteps_stage3,
         model=model,
         gpu_id=gpu_id,
+        reload_configs=reload_configs,
     )
 
     # Final evaluation
@@ -267,13 +287,13 @@ def main():
         "--learning-rate",
         "--lr",
         type=float,
-        default=3e-4,
+        default=None,
         help="Learning rate for the optimizer (default: 3e-4)",
     )
     parser.add_argument(
         "--ent-coef",
         type=float,
-        default=0.1,
+        default=None,
         help="Entropy coefficient for exploration (default: 0.1)",
     )
     parser.add_argument(
@@ -282,6 +302,11 @@ def main():
         nargs="+",
         default=None,
         help="Network architecture as space-separated integers (e.g., 512 512 256)",
+    )
+    parser.add_argument(
+        "--reload-configs",
+        action="store_true",
+        help="Reload all hyperparameters from config when resuming (except net_arch)",
     )
 
     args = parser.parse_args()
@@ -294,6 +319,7 @@ def main():
         learning_rate=args.learning_rate,
         ent_coef=args.ent_coef,
         net_arch=args.net_arch,
+        reload_configs=args.reload_configs,
     )
 
 
