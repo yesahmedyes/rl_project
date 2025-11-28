@@ -1,3 +1,6 @@
+from stable_baselines3.common.schedules import ConstantSchedule
+
+
 def update_model_hyperparameters(model, config):
     # Update learning rate
     if hasattr(model, "learning_rate") and config.learning_rate != model.learning_rate:
@@ -18,8 +21,6 @@ def update_model_hyperparameters(model, config):
         "n_epochs",
         "gamma",
         "gae_lambda",
-        "clip_range",
-        "clip_range_vf",
         "ent_coef",
         "vf_coef",
         "max_grad_norm",
@@ -33,3 +34,29 @@ def update_model_hyperparameters(model, config):
             if old_value != new_value:
                 setattr(model, param_name, new_value)
                 print(f"  {param_name}: {old_value} -> {new_value}")
+
+    if hasattr(model, "clip_range") and hasattr(config, "clip_range"):
+        old_clip_range = model.clip_range
+
+        # Convert float to ConstantSchedule if needed
+        if isinstance(config.clip_range, float):
+            new_clip_range = ConstantSchedule(config.clip_range)
+        else:
+            new_clip_range = config.clip_range
+
+        if old_clip_range != new_clip_range:
+            model.clip_range = new_clip_range
+            print(f"  clip_range: {old_clip_range} -> {new_clip_range}")
+
+    if hasattr(model, "clip_range_vf") and hasattr(config, "clip_range_vf"):
+        if config.clip_range_vf is not None:
+            old_clip_range_vf = model.clip_range_vf
+            # Convert float to ConstantSchedule if needed
+            if isinstance(config.clip_range_vf, float):
+                new_clip_range_vf = ConstantSchedule(config.clip_range_vf)
+            else:
+                new_clip_range_vf = config.clip_range_vf
+
+            if old_clip_range_vf != new_clip_range_vf:
+                model.clip_range_vf = new_clip_range_vf
+                print(f"  clip_range_vf: {old_clip_range_vf} -> {new_clip_range_vf}")

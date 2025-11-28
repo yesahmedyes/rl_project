@@ -33,16 +33,16 @@ class TrainingConfig:
     # Curriculum learning
     stage1_threshold: float = 0.75
     stage2_threshold: float = 0.75
-    eval_freq: int = 500_000  # Evaluate every N timesteps
+    eval_freq: int = 1_000_000  # Evaluate every N timesteps
     n_eval_episodes: int = 1000  # Number of episodes for evaluation
 
-    self_play_opponent_update_freq: int = 500_000  # Update opponent every N timesteps
+    self_play_opponent_update_freq: int = 1_000_000  # Update opponent every N timesteps
 
     # Logging and saving
     log_dir: str = "./logs"
     save_dir: str = "./models"
     tensorboard_log: str = "./logs/tensorboard"
-    save_freq: int = 500_000  # Save model every N timesteps
+    save_freq: int = 1_000_000  # Save model every N timesteps
 
     # Device settings
     device: str = "auto"  # "auto", "cuda", "cpu"
