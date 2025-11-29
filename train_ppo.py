@@ -5,7 +5,7 @@ from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 
 from config import TrainingConfig
-from env.vec_env_factory import make_vec_env, SelfPlayVecEnv
+from env.vec_env_factory import make_vec_env, BatchedOpponentVecEnv
 from evaluate import evaluate_alternating_players
 from misc.curriculum_callback import CurriculumCallback
 from misc.checkpoint_callback import CheckpointCallback
@@ -60,15 +60,15 @@ def train_stage(
 
     # Create vectorized environment
     if stage == 3:
-        # Self-play environment
-        vec_env = SelfPlayVecEnv(
+        # Self-play environment with batched GPU opponent
+        vec_env = BatchedOpponentVecEnv(
             n_envs=config.n_envs,
             encoding_type=config.encoding_type,
             agent_player=config.agent_player,
             log_dir=stage_log_dir,
             seed=config.seed,
-            use_subprocess=True,
             opponent_model_path=config.self_play_opponent_model_path,
+            opponent_device=config.self_play_opponent_device,
         )
     else:
         vec_env = make_vec_env(
@@ -180,6 +180,7 @@ def train_curriculum(
     batch_size: int = None,
     reload_configs: bool = False,
     self_play_opponent_path: str = None,
+    self_play_opponent_device: str = None,
 ):
     config_kwargs = {}
 
@@ -195,6 +196,8 @@ def train_curriculum(
         config_kwargs["batch_size"] = batch_size
     if self_play_opponent_path is not None:
         config_kwargs["self_play_opponent_model_path"] = self_play_opponent_path
+    if self_play_opponent_device is not None:
+        config_kwargs["self_play_opponent_device"] = self_play_opponent_device
 
     config = TrainingConfig(**config_kwargs)
 
@@ -208,6 +211,7 @@ def train_curriculum(
     print(f"GPU ID: {gpu_id}")
     if config.self_play_opponent_model_path:
         print(f"Self-Play Opponent: {config.self_play_opponent_model_path}")
+        print(f"Self-Play Opponent Device: {config.self_play_opponent_device}")
     print("=" * 60 + "\n")
 
     # Load existing model if resuming
@@ -331,6 +335,12 @@ def main():
         default=None,
         help="Path to opponent model checkpoint for self-play (stage 3)",
     )
+    parser.add_argument(
+        "--self-play-opponent-device",
+        type=str,
+        default=None,
+        help="Device for opponent model (e.g., 'cpu', 'cuda:1'). Default: cpu",
+    )
 
     args = parser.parse_args()
 
@@ -345,6 +355,7 @@ def main():
         batch_size=args.batch_size,
         reload_configs=args.reload_configs,
         self_play_opponent_path=args.self_play_opponent,
+        self_play_opponent_device=args.self_play_opponent_device,
     )
 
 

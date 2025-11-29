@@ -38,6 +38,9 @@ class TrainingConfig:
 
     # Self-play settings
     self_play_opponent_model_path: Optional[str] = None
+    self_play_opponent_device: str = (
+        "cpu"  # Device for opponent model (e.g., "cpu", "cuda:1")
+    )
 
     # Logging and saving
     log_dir: str = "./logs"
