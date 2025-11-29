@@ -19,7 +19,7 @@ CUDA_VISIBLE_DEVICES=1 python -u train_ppo.py \
     --resume /home/ubuntu/ahmed-etri/rl_project/models/v4/best_stage1_handcrafted_lr3e-04_ent0.1_arch512.zip \
     --reload-configs \
     --gpu 0 \
-    --self-play-opponent-device cuda:1 \
+    --self-play-opponent-device cuda:2 \
     --self-play-opponent /home/ubuntu/ahmed-etri/rl_project/models/v4/best_stage1_handcrafted_lr3e-04_ent0.1_arch512.zip \
     > "$LAUNCH_LOG_DIR/handcrafted.log" 2>&1 &
 HANDCRAFTED_PID=$!
