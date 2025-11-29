@@ -5,7 +5,7 @@ from typing import Optional
 @dataclass
 class TrainingConfig:
     encoding_type: str = "handcrafted"  # "handcrafted" or "onehot"
-    n_envs: int = 48
+    n_envs: int = 32
     agent_player: Optional[int] = None
 
     # PPO hyperparameters
