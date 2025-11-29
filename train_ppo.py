@@ -8,6 +8,7 @@ from config import TrainingConfig
 from env.vec_env_factory import make_vec_env, SelfPlayVecEnv
 from evaluate import evaluate_alternating_players
 from misc.curriculum_callback import CurriculumCallback
+from misc.checkpoint_callback import CheckpointCallback
 from misc.update_config import update_model_hyperparameters
 
 import warnings
@@ -123,6 +124,18 @@ def train_stage(
 
     # Create callbacks
     callbacks = []
+
+    # Checkpoint callback for periodic saving (overwrites same file)
+    latest_checkpoint_name = config.get_model_name(
+        prefix="latest_checkpoint", stage=stage
+    )
+    checkpoint_callback = CheckpointCallback(
+        save_freq=config.save_freq,
+        save_path=config.save_dir,
+        model_name=latest_checkpoint_name,
+        verbose=config.verbose,
+    )
+    callbacks.append(checkpoint_callback)
 
     # Curriculum callback for evaluation (also saves best models)
     curriculum_callback = CurriculumCallback(

@@ -37,14 +37,13 @@ class TrainingConfig:
     n_eval_episodes: int = 1000  # Number of episodes for evaluation
 
     # Self-play settings
-    self_play_opponent_model_path: Optional[str] = (
-        None  # Path to opponent model checkpoint for self-play
-    )
+    self_play_opponent_model_path: Optional[str] = None
 
     # Logging and saving
     log_dir: str = "./logs"
     save_dir: str = "./models"
     tensorboard_log: str = "./logs/tensorboard"
+    save_freq: int = 500_000
 
     # Device settings
     device: str = "auto"  # "auto", "cuda", "cpu"
