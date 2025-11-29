@@ -26,8 +26,8 @@ class TrainingConfig:
     policy_kwargs: dict = None  # Will be set in __post_init__
 
     # Training settings
-    total_timesteps_stage1: int = 0
-    total_timesteps_stage2: int = 0
+    total_timesteps_stage1: int = 100_000_000
+    total_timesteps_stage2: int = 100_000_000
     total_timesteps_stage3: int = 100_000_000
 
     # Curriculum learning

@@ -106,6 +106,7 @@ def train_stage(
             "ent_coef": config.ent_coef,
             "vf_coef": config.vf_coef,
             "max_grad_norm": config.max_grad_norm,
+            "normalize_advantage": True,
             "policy_kwargs": policy_kwargs,
             "tensorboard_log": config.tensorboard_log,
             "device": device,
