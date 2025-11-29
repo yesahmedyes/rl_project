@@ -177,6 +177,7 @@ def train_curriculum(
     learning_rate: float = None,
     ent_coef: float = None,
     net_arch: list = None,
+    batch_size: int = None,
     reload_configs: bool = False,
 ):
     config_kwargs = {}
@@ -189,6 +190,8 @@ def train_curriculum(
         config_kwargs["ent_coef"] = ent_coef
     if net_arch is not None:
         config_kwargs["net_arch"] = net_arch
+    if batch_size is not None:
+        config_kwargs["batch_size"] = batch_size
 
     config = TrainingConfig(**config_kwargs)
 
@@ -198,6 +201,7 @@ def train_curriculum(
     print(f"Learning Rate: {learning_rate}")
     print(f"Entropy Coefficient: {ent_coef}")
     print(f"Network Architecture: {config.net_arch}")
+    print(f"Batch Size: {config.batch_size}")
     print(f"GPU ID: {gpu_id}")
     print("=" * 60 + "\n")
 
@@ -306,6 +310,12 @@ def main():
         help="Network architecture as space-separated integers (e.g., 512 512 256)",
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Batch size for training (default: 512)",
+    )
+    parser.add_argument(
         "--reload-configs",
         action="store_true",
         help="Reload all hyperparameters from config when resuming (except net_arch)",
@@ -321,6 +331,7 @@ def main():
         learning_rate=args.learning_rate,
         ent_coef=args.ent_coef,
         net_arch=args.net_arch,
+        batch_size=args.batch_size,
         reload_configs=args.reload_configs,
     )
 
