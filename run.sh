@@ -34,10 +34,10 @@ CUDA_VISIBLE_DEVICES=2 python -u train_ppo.py \
     --ent-coef 0.05 \
     --reload-configs \
     --gpu 0 \
-    > "$LAUNCH_LOG_DIR/handcrafted.log" 2>&1 &
+    > "$LAUNCH_LOG_DIR/handcrafted_ent0.05.log" 2>&1 &
 HANDCRAFTED_PID=$!
 echo "Started handcrafted training (PID: $HANDCRAFTED_PID)"
-echo "Log file: $LAUNCH_LOG_DIR/handcrafted.log"
+echo "Log file: $LAUNCH_LOG_DIR/handcrafted_ent0.05.log"
 echo ""
 
 echo "=============================================="
@@ -49,8 +49,8 @@ CUDA_VISIBLE_DEVICES=3 python -u train_ppo.py \
     --batch-size 1024 \
     --reload-configs \
     --gpu 0 \
-    > "$LAUNCH_LOG_DIR/handcrafted.log" 2>&1 &
+    > "$LAUNCH_LOG_DIR/handcrafted_batch1024.log" 2>&1 &
 HANDCRAFTED_PID=$!
 echo "Started handcrafted training (PID: $HANDCRAFTED_PID)"
-echo "Log file: $LAUNCH_LOG_DIR/handcrafted.log"
+echo "Log file: $LAUNCH_LOG_DIR/handcrafted_batch1024.log"
 echo ""
