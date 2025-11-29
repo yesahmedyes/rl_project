@@ -26,13 +26,13 @@ class TrainingConfig:
     policy_kwargs: dict = None  # Will be set in __post_init__
 
     # Training settings
-    total_timesteps_stage1: int = 0
-    total_timesteps_stage2: int = 0
+    total_timesteps_stage1: int = 500_000
+    total_timesteps_stage2: int = 500_000_000
     total_timesteps_stage3: int = 500_000_000
 
     # Curriculum learning
-    stage1_threshold: float = 0.0
-    stage2_threshold: float = 0.0
+    stage1_threshold: float = 0.75
+    stage2_threshold: float = 0.75
     eval_freq: int = 500_000  # Evaluate every N timesteps
     n_eval_episodes: int = 1000  # Number of episodes for evaluation
 
