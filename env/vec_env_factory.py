@@ -110,6 +110,7 @@ class SelfPlayVecEnv(VecEnv):
         log_dir: Optional[str] = None,
         seed: int = 0,
         use_subprocess: bool = True,
+        opponent_model_path: Optional[str] = None,
     ):
         self.n_envs = n_envs
         self.encoding_type = encoding_type
@@ -117,11 +118,39 @@ class SelfPlayVecEnv(VecEnv):
         self.log_dir = log_dir
         self.seed = seed
         self.use_subprocess = use_subprocess
+        self.opponent_model_path = opponent_model_path
+
+        # Load opponent model if path is provided
+        opponent_policy = None
+        opponent_type = "random"
+
+        if opponent_model_path is not None:
+            from sb3_contrib import MaskablePPO
+
+            print(f"Loading opponent model from {opponent_model_path}...")
+
+            opponent_model = MaskablePPO.load(opponent_model_path, device="cpu")
+
+            # Set opponent policy to eval mode and ensure no gradients
+            opponent_model.policy.eval()
+
+            for param in opponent_model.policy.parameters():
+                param.requires_grad = False
+
+            # Wrap the neural network policy
+            opponent_policy = NeuralNetworkPolicyWrapper(
+                opponent_model.policy, self.encoding_type, device="cpu"
+            )
+
+            opponent_type = "self"
+
+            print("Opponent model loaded successfully (CPU, eval mode, no gradients)")
 
         self.vec_env = make_vec_env(
             n_envs=n_envs,
             encoding_type=encoding_type,
-            opponent_type="random",
+            opponent_type=opponent_type,
+            opponent_policy=opponent_policy,
             agent_player=agent_player,
             log_dir=log_dir,
             seed=seed,
@@ -133,23 +162,6 @@ class SelfPlayVecEnv(VecEnv):
             num_envs=self.vec_env.num_envs,
             observation_space=self.vec_env.observation_space,
             action_space=self.vec_env.action_space,
-        )
-
-    def update_opponent_policy(self, policy):
-        self.vec_env.close()
-
-        # Wrap the neural network policy
-        wrapped_policy = NeuralNetworkPolicyWrapper(policy, self.encoding_type)
-
-        self.vec_env = make_vec_env(
-            n_envs=self.n_envs,
-            encoding_type=self.encoding_type,
-            opponent_type="self",
-            opponent_policy=wrapped_policy,
-            agent_player=self.agent_player,
-            log_dir=self.log_dir,
-            seed=self.seed,
-            use_subprocess=self.use_subprocess,
         )
 
     # Implement required VecEnv methods
@@ -188,9 +200,15 @@ class SelfPlayVecEnv(VecEnv):
 
 
 class NeuralNetworkPolicyWrapper:
-    def __init__(self, policy, encoding_type: str = "handcrafted"):
+    def __init__(self, policy, encoding_type: str = "handcrafted", device: str = "cpu"):
         self.policy = policy
         self.encoding_type = encoding_type
+        self.device = device
+
+        # Ensure policy is on the correct device
+        self.policy.to(self.device)
+        # Set to eval mode
+        self.policy.eval()
 
     def get_action(self, state, action_space):
         if not action_space:
@@ -215,8 +233,8 @@ class NeuralNetworkPolicyWrapper:
             if action_int < max_actions:
                 mask[action_int] = 1
 
-        # Get action from policy
-        obs_tensor = torch.as_tensor(obs).unsqueeze(0).to(self.policy.device)
+        # Get action from policy (with no gradient computation)
+        obs_tensor = torch.as_tensor(obs).unsqueeze(0).to(self.device)
         with torch.no_grad():
             # Get action distribution
             dist = self.policy.get_distribution(obs_tensor)

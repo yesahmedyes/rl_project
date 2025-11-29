@@ -36,13 +36,15 @@ class TrainingConfig:
     eval_freq: int = 500_000  # Evaluate every N timesteps
     n_eval_episodes: int = 1000  # Number of episodes for evaluation
 
-    self_play_opponent_update_freq: int = 500_000  # Update opponent every N timesteps
+    # Self-play settings
+    self_play_opponent_model_path: Optional[str] = (
+        None  # Path to opponent model checkpoint for self-play
+    )
 
     # Logging and saving
     log_dir: str = "./logs"
     save_dir: str = "./models"
     tensorboard_log: str = "./logs/tensorboard"
-    save_freq: int = 500_000  # Save model every N timesteps
 
     # Device settings
     device: str = "auto"  # "auto", "cuda", "cpu"
@@ -82,6 +84,7 @@ class TrainingConfig:
         parts.append(self.encoding_type)
         parts.append(f"lr{self.learning_rate:.0e}")
         parts.append(f"ent{self.ent_coef}")
+        parts.append(f"batch{self.batch_size}")
         parts.append(f"arch{self.net_arch[0]}")
 
         return "_".join(parts) + ".zip"

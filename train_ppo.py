@@ -8,7 +8,6 @@ from config import TrainingConfig
 from env.vec_env_factory import make_vec_env, SelfPlayVecEnv
 from evaluate import evaluate_alternating_players
 from misc.curriculum_callback import CurriculumCallback
-from misc.selfplay_callback import SelfPlayCallback
 from misc.update_config import update_model_hyperparameters
 
 import warnings
@@ -68,11 +67,8 @@ def train_stage(
             log_dir=stage_log_dir,
             seed=config.seed,
             use_subprocess=True,
+            opponent_model_path=config.self_play_opponent_model_path,
         )
-
-        # Initialize opponent with current model if available
-        if model is not None:
-            vec_env.update_opponent_policy(model.policy)
     else:
         vec_env = make_vec_env(
             n_envs=config.n_envs,
@@ -140,15 +136,6 @@ def train_stage(
     curriculum_callback.current_stage = stage
     callbacks.append(curriculum_callback)
 
-    # Self-play callback (only for stage 3)
-    if stage == 3:
-        self_play_callback = SelfPlayCallback(
-            update_freq=config.self_play_opponent_update_freq,
-            vec_env=vec_env,
-            verbose=config.verbose,
-        )
-        callbacks.append(self_play_callback)
-
     # Train
     print("\nStarting training...")
     model.learn(
@@ -179,6 +166,7 @@ def train_curriculum(
     net_arch: list = None,
     batch_size: int = None,
     reload_configs: bool = False,
+    self_play_opponent_path: str = None,
 ):
     config_kwargs = {}
 
@@ -192,6 +180,8 @@ def train_curriculum(
         config_kwargs["net_arch"] = net_arch
     if batch_size is not None:
         config_kwargs["batch_size"] = batch_size
+    if self_play_opponent_path is not None:
+        config_kwargs["self_play_opponent_model_path"] = self_play_opponent_path
 
     config = TrainingConfig(**config_kwargs)
 
@@ -203,6 +193,8 @@ def train_curriculum(
     print(f"Network Architecture: {config.net_arch}")
     print(f"Batch Size: {config.batch_size}")
     print(f"GPU ID: {gpu_id}")
+    if config.self_play_opponent_model_path:
+        print(f"Self-Play Opponent: {config.self_play_opponent_model_path}")
     print("=" * 60 + "\n")
 
     # Load existing model if resuming
@@ -320,6 +312,12 @@ def main():
         action="store_true",
         help="Reload all hyperparameters from config when resuming (except net_arch)",
     )
+    parser.add_argument(
+        "--self-play-opponent",
+        type=str,
+        default=None,
+        help="Path to opponent model checkpoint for self-play (stage 3)",
+    )
 
     args = parser.parse_args()
 
@@ -333,6 +331,7 @@ def main():
         net_arch=args.net_arch,
         batch_size=args.batch_size,
         reload_configs=args.reload_configs,
+        self_play_opponent_path=args.self_play_opponent,
     )
 
 
