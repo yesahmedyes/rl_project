@@ -8,6 +8,8 @@ class TrainingConfig:
     n_envs: int = 48
     agent_player: Optional[int] = None
 
+    normalize_reward = True
+
     # PPO hyperparameters
     learning_rate: float = 3e-4
     n_steps: int = 1024  # Steps per environment before update
