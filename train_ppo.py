@@ -262,22 +262,7 @@ def train_curriculum(
 
     # Final evaluation
     print("\n" + "=" * 60)
-    print("Training Complete! Running Final Evaluation...")
-    print("=" * 60 + "\n")
-
-    for opponent in ["random", "heuristic"]:
-        print(f"\nEvaluating vs {opponent}:")
-        evaluate_alternating_players(
-            model=model,
-            opponent_type=opponent,
-            n_eval_episodes=10000,
-            encoding_type=encoding_type,
-            use_deterministic=True,
-            verbose=True,
-        )
-
-    print("\n" + "=" * 60)
-    print("All training stages completed!")
+    print("Training Complete!")
     print("=" * 60 + "\n")
 
     return model

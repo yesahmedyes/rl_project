@@ -4,6 +4,8 @@ from policies.milestone2 import Policy_Milestone2
 from policies.policy_snakes import Policy_Snakes
 from env.ludo import Ludo
 from tqdm import tqdm
+import argparse
+import os
 
 
 def get_win_percentages(n, policy1, policy2):
@@ -33,11 +35,52 @@ def get_win_percentages(n, policy1, policy2):
     return win_percentages
 
 
-print(
-    get_win_percentages(
-        1000,
-        # Policy_Heuristic(),
-        Policy_Milestone2(),
-        Policy_Snakes(checkpoint_path="./models/snakes/latest_handcrafted.zip"),
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Test a single snake policy against opponents"
     )
-)
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        required=True,
+        help="Path to the snake model checkpoint",
+    )
+    parser.add_argument(
+        "--device", type=str, default="cuda:0", help="Device to run the model on"
+    )
+
+    args = parser.parse_args()
+
+    # Extract model name from path
+    model_name = os.path.basename(args.model_path).replace(".zip", "")
+
+    # Define opponents
+    opponents = [
+        ("Random", Policy_Random()),
+        ("Heuristic", Policy_Heuristic()),
+        ("Milestone2", Policy_Milestone2()),
+    ]
+
+    # Test the specified model against all opponents
+    print(f"Testing model: {model_name}")
+    print(f"Model path: {args.model_path}")
+    print(f"Device: {args.device}")
+    print("=" * 50)
+
+    for opponent_name, opponent_policy in opponents:
+        print(f"\nTesting {model_name} vs {opponent_name}:")
+
+        results = get_win_percentages(
+            2000,
+            opponent_policy,
+            Policy_Snakes(
+                encoding_type="onehot",
+                checkpoint_path=args.model_path,
+                device=args.device,
+            ),
+        )
+
+        print(f"  {opponent_name} win rate: {results[0]:.2f}%")
+        print(f"  {model_name} win rate: {results[1]:.2f}%")
+
+    print(f"\nCompleted testing for {model_name}")
