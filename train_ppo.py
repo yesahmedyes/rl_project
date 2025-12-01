@@ -3,10 +3,10 @@ import argparse
 import torch
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
+from stable_baselines3.common.vec_env import VecNormalize
 
 from config import TrainingConfig
 from env.vec_env_factory import make_vec_env, BatchedOpponentVecEnv
-from evaluate import evaluate_alternating_players
 from misc.curriculum_callback import CurriculumCallback
 from misc.checkpoint_callback import CheckpointCallback
 from misc.update_config import update_model_hyperparameters
@@ -79,6 +79,16 @@ def train_stage(
             log_dir=stage_log_dir,
             seed=config.seed,
             use_subprocess=True,
+        )
+
+    # Wrap with VecNormalize for reward normalization if enabled
+    if config.normalize_reward:
+        vec_env = VecNormalize(
+            vec_env,
+            norm_obs=False,  # Don't normalize observations
+            norm_reward=True,  # Normalize rewards
+            clip_obs=10.0,
+            clip_reward=10.0,
         )
 
     if model is None:
@@ -182,6 +192,10 @@ def train_curriculum(
     reload_configs: bool = False,
     self_play_opponent_path: str = None,
     self_play_opponent_device: str = None,
+    n_epochs: int = None,
+    total_timesteps_stage1: int = None,
+    total_timesteps_stage2: int = None,
+    total_timesteps_stage3: int = None,
 ):
     config_kwargs = {}
 
@@ -199,6 +213,14 @@ def train_curriculum(
         config_kwargs["self_play_opponent_model_path"] = self_play_opponent_path
     if self_play_opponent_device is not None:
         config_kwargs["self_play_opponent_device"] = self_play_opponent_device
+    if n_epochs is not None:
+        config_kwargs["n_epochs"] = n_epochs
+    if total_timesteps_stage1 is not None:
+        config_kwargs["total_timesteps_stage1"] = total_timesteps_stage1
+    if total_timesteps_stage2 is not None:
+        config_kwargs["total_timesteps_stage2"] = total_timesteps_stage2
+    if total_timesteps_stage3 is not None:
+        config_kwargs["total_timesteps_stage3"] = total_timesteps_stage3
 
     config = TrainingConfig(**config_kwargs)
 
@@ -327,6 +349,30 @@ def main():
         default=None,
         help="Device for opponent model (e.g., 'cpu', 'cuda:1'). Default: cpu",
     )
+    parser.add_argument(
+        "--n-epochs",
+        type=int,
+        default=None,
+        help="Number of epochs when optimizing the surrogate loss (default: 5)",
+    )
+    parser.add_argument(
+        "--total-timesteps-stage1",
+        type=int,
+        default=None,
+        help="Total timesteps for stage 1 training (default: 100_000_000)",
+    )
+    parser.add_argument(
+        "--total-timesteps-stage2",
+        type=int,
+        default=None,
+        help="Total timesteps for stage 2 training (default: 100_000_000)",
+    )
+    parser.add_argument(
+        "--total-timesteps-stage3",
+        type=int,
+        default=None,
+        help="Total timesteps for stage 3 training (default: 100_000_000)",
+    )
 
     args = parser.parse_args()
 
@@ -342,6 +388,10 @@ def main():
         reload_configs=args.reload_configs,
         self_play_opponent_path=args.self_play_opponent,
         self_play_opponent_device=args.self_play_opponent_device,
+        n_epochs=args.n_epochs,
+        total_timesteps_stage1=args.total_timesteps_stage1,
+        total_timesteps_stage2=args.total_timesteps_stage2,
+        total_timesteps_stage3=args.total_timesteps_stage3,
     )
 
 
