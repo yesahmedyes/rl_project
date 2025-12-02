@@ -25,36 +25,44 @@ echo ""
 
 # Define all model paths
 MODEL_PATHS=(
-    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage1_onehot_lr3e-04_ent0.01_batch1024_arch1024.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage2_onehot_lr3e-04_ent0.01_batch1024_arch1024.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage3_onehot_lr3e-04_ent0.01_batch1024_arch1024.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/latest_checkpoint_stage1_onehot_lr3e-04_ent0.01_batch1024_arch1024.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/latest_checkpoint_stage2_onehot_lr3e-04_ent0.01_batch1024_arch1024.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/latest_checkpoint_stage3_onehot_lr3e-04_ent0.01_batch1024_arch1024.zip"
+    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage1_handcrafted_dense_lr3e-04_ent0.005_batch2048_arch256.zip"
+    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage1_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch256.zip"
+    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage1_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch512.zip"
+    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage2_handcrafted_dense_lr3e-04_ent0.005_batch2048_arch256.zip"
+    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage2_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch256.zip"
+    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage2_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch512.zip"
+    "/home/ubuntu/ahmed-etri/rl_project/models/latest_checkpoint_stage1_handcrafted_dense_lr3e-04_ent0.005_batch2048_arch256.zip"
+    "/home/ubuntu/ahmed-etri/rl_project/models/latest_checkpoint_stage1_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch256.zip"
+    "/home/ubuntu/ahmed-etri/rl_project/models/latest_checkpoint_stage1_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch512.zip"
 )
 
-# Function to run tests for a specific model on a specific GPU
-run_model_tests() {
-    local model_path=$1
-    local gpu_id=$2
-    local model_name=$(basename "$model_path" .zip)
-    local log_file="$TEST_LOG_DIR/${model_name}_gpu${gpu_id}.log"
-    
-    echo "Starting tests for $model_name on GPU $gpu_id (log: $log_file)"
-    CUDA_VISIBLE_DEVICES=$gpu_id python -u policy_test.py \
-        --model_path "$model_path" \
-        --device "cuda:0" \
-        > "$log_file" 2>&1 &
-    echo $!  # Return PID
-}
+# Shared log file for all tests
+SHARED_LOG="$TEST_LOG_DIR/all_tests.log"
+echo "All tests will be logged to: $SHARED_LOG"
+echo ""
 
 # Start tests for each model, distributing across GPUs
 pids=()
 gpu_counter=0
 
 for model_path in "${MODEL_PATHS[@]}"; do
-    pid=$(run_model_tests "$model_path" $gpu_counter)
-    pids+=($pid)
+    model_name=$(basename "$model_path" .zip)
+    
+    # Extract encoding type from model name (handcrafted or onehot)
+    if [[ "$model_name" == *"handcrafted"* ]]; then
+        encoding_type="handcrafted"
+    else
+        encoding_type="onehot"
+    fi
+    
+    echo "Starting tests for $model_name on GPU $gpu_counter (encoding: $encoding_type)"
+    CUDA_VISIBLE_DEVICES=$gpu_counter python -u policy_test.py \
+        --model_path "$model_path" \
+        --device "cuda:0" \
+        --encoding_type "$encoding_type" \
+        >> "$SHARED_LOG" 2>&1 &
+    
+    pids+=($!)
     
     # Cycle through GPUs
     gpu_counter=$(( (gpu_counter + 1) % GPU_COUNT ))
@@ -71,5 +79,5 @@ done
 
 echo "=============================================="
 echo "Policy tests completed!"
-echo "Results saved to: $TEST_LOG_DIR/"
+echo "Results saved to: $SHARED_LOG"
 echo "=============================================="

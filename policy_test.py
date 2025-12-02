@@ -48,6 +48,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--device", type=str, default="cuda:0", help="Device to run the model on"
     )
+    parser.add_argument(
+        "--encoding_type",
+        type=str,
+        default="onehot",
+        choices=["onehot", "handcrafted"],
+        help="Encoding type used by the model",
+    )
 
     args = parser.parse_args()
 
@@ -65,6 +72,7 @@ if __name__ == "__main__":
     print(f"Testing model: {model_name}")
     print(f"Model path: {args.model_path}")
     print(f"Device: {args.device}")
+    print(f"Encoding type: {args.encoding_type}")
     print("=" * 50)
 
     for opponent_name, opponent_policy in opponents:
@@ -74,7 +82,7 @@ if __name__ == "__main__":
             2000,
             opponent_policy,
             Policy_Snakes(
-                encoding_type="onehot",
+                encoding_type=args.encoding_type,
                 checkpoint_path=args.model_path,
                 device=args.device,
             ),

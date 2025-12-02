@@ -10,6 +10,7 @@ models/
 logs/
 tensorboard_logs/
 training_logs/
+test_logs/
 
 # Checkpoints
 *.zip
