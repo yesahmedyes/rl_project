@@ -1,68 +1,125 @@
 set -e  # Exit on error
 
 echo "=============================================="
-echo "Ludo PPO Training"
+echo "Ludo PPO Training - 6 Configurations"
 echo "=============================================="
-
-# Configuration
-N_GPUS=6
 
 # Create log directory for training outputs
 LAUNCH_LOG_DIR="./training_logs/$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LAUNCH_LOG_DIR"
 
 echo "=============================================="
-echo "Launching Handcrafted encoding training"
-echo "=============================================="
-CUDA_VISIBLE_DEVICES=2,3 python -u train_ppo.py \
-    --encoding handcrafted \
-    --resume /home/ubuntu/ahmed-etri/rl_project/models/v5/best_stage3_handcrafted_lr3e-04_ent0.01_batch1024_arch512.zip \
-    --reload-configs \
-    --ent-coef 0.01 \
-    --gpu 0 \
-    --self-play-opponent-device cuda:1 \
-    --self-play-opponent /home/ubuntu/ahmed-etri/rl_project/models/v5/best_stage3_handcrafted_lr3e-04_ent0.01_batch1024_arch512.zip \
-    --batch-size 4096 \
-    --learning-rate 1e-4 \
-    --n-epochs 10 \
-    --total-timesteps-stage1 0 \
-    > "$LAUNCH_LOG_DIR/handcrafted.log" 2>&1 &
-HANDCRAFTED_PID=$!
-echo "Started handcrafted training (PID: $HANDCRAFTED_PID)"
-echo "Log file: $LAUNCH_LOG_DIR/handcrafted.log"
-echo ""
-
-echo "=============================================="
-echo "Launching Onehot encoding training"
-echo "=============================================="
-CUDA_VISIBLE_DEVICES=4,5 python -u train_ppo.py \
-    --encoding onehot \
-    --resume /home/ubuntu/ahmed-etri/rl_project/models/v5/best_stage3_onehot_lr3e-04_ent0.01_batch1024_arch1024.zip \
-    --reload-configs \
-    --ent-coef 0.01 \
-    --gpu 0 \
-    --self-play-opponent-device cuda:1 \
-    --self-play-opponent /home/ubuntu/ahmed-etri/rl_project/models/v5/best_stage3_onehot_lr3e-04_ent0.01_batch1024_arch1024.zip \
-    --net-arch 1024 1024 512 \
-    --batch-size 4096 \
-    --learning-rate 1e-4 \
-    --n-epochs 10 \
-    --total-timesteps-stage1 0 \
-    > "$LAUNCH_LOG_DIR/onehot.log" 2>&1 &
-ONEHOT_PID=$!
-echo "Started onehot training (PID: $ONEHOT_PID)"
-echo "Log file: $LAUNCH_LOG_DIR/onehot.log"
-echo ""
-
-echo "=============================================="
-echo "Launching Onehot encoding training"
+echo "Config 1: Handcrafted + Sparse + [256,256,128]"
 echo "=============================================="
 CUDA_VISIBLE_DEVICES=0 python -u train_ppo.py \
+    --encoding handcrafted \
+    --gpu 0 \
+    --net-arch 256 256 128 \
+    --n-envs 16 \
+    --n-steps 512 \
+    --learning-rate 3e-4 \
+    --batch-size 2048 \
+    --n-epochs 3 \
+    --gamma 0.995 \
+    > "$LAUNCH_LOG_DIR/config1_handcrafted_sparse_256.log" 2>&1 &
+PID1=$!
+echo "Started Config 1 (PID: $PID1)"
+echo "Log: $LAUNCH_LOG_DIR/config1_handcrafted_sparse_256.log"
+echo ""
+
+echo "=============================================="
+echo "Config 2: Handcrafted + Dense + [256,256,128]"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=1 python -u train_ppo.py \
+    --encoding handcrafted \
+    --gpu 0 \
+    --dense-reward \
+    --net-arch 256 256 128 \
+    --n-envs 16 \
+    --n-steps 512 \
+    --learning-rate 3e-4 \
+    --batch-size 2048 \
+    --n-epochs 3 \
+    --gamma 0.99 \
+    > "$LAUNCH_LOG_DIR/config2_handcrafted_dense_256.log" 2>&1 &
+PID2=$!
+echo "Started Config 2 (PID: $PID2)"
+echo "Log: $LAUNCH_LOG_DIR/config2_handcrafted_dense_256.log"
+echo ""
+
+echo "=============================================="
+echo "Config 3: Handcrafted + Sparse + [512,512,256]"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=2 python -u train_ppo.py \
+    --encoding handcrafted \
+    --gpu 0 \
+    --net-arch 512 512 256 \
+    --n-envs 16 \
+    --n-steps 512 \
+    --learning-rate 3e-4 \
+    --batch-size 2048 \
+    --n-epochs 3 \
+    --gamma 0.995 \
+    > "$LAUNCH_LOG_DIR/config3_handcrafted_sparse_512.log" 2>&1 &
+PID3=$!
+echo "Started Config 3 (PID: $PID3)"
+echo "Log: $LAUNCH_LOG_DIR/config3_handcrafted_sparse_512.log"
+echo ""
+
+echo "=============================================="
+echo "Config 4: Onehot + Sparse + [512,512,256]"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=3 python -u train_ppo.py \
     --encoding onehot \
     --gpu 0 \
-    --net-arch 2048 2048 1024 \
-    > "$LAUNCH_LOG_DIR/onehot_2048.log" 2>&1 &
-ONEHOT_PID=$!
-echo "Started onehot 2048 training (PID: $ONEHOT_PID)"
-echo "Log file: $LAUNCH_LOG_DIR/onehot_2048.log"
+    --net-arch 512 512 256 \
+    --n-envs 16 \
+    --n-steps 768 \
+    --learning-rate 2e-4 \
+    --batch-size 2048 \
+    --n-epochs 3 \
+    --gamma 0.995 \
+    > "$LAUNCH_LOG_DIR/config4_onehot_sparse_512.log" 2>&1 &
+PID4=$!
+echo "Started Config 4 (PID: $PID4)"
+echo "Log: $LAUNCH_LOG_DIR/config4_onehot_sparse_512.log"
+echo ""
+
+echo "=============================================="
+echo "Config 5: Onehot + Dense + [512,512,256]"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=4 python -u train_ppo.py \
+    --encoding onehot \
+    --gpu 0 \
+    --dense-reward \
+    --net-arch 512 512 256 \
+    --n-envs 16 \
+    --n-steps 768 \
+    --learning-rate 2e-4 \
+    --batch-size 2048 \
+    --n-epochs 3 \
+    --gamma 0.99 \
+    > "$LAUNCH_LOG_DIR/config5_onehot_dense_512.log" 2>&1 &
+PID5=$!
+echo "Started Config 5 (PID: $PID5)"
+echo "Log: $LAUNCH_LOG_DIR/config5_onehot_dense_512.log"
+echo ""
+
+echo "=============================================="
+echo "Config 6: Onehot + Sparse + [1024,1024,512]"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=5 python -u train_ppo.py \
+    --encoding onehot \
+    --gpu 0 \
+    --net-arch 1024 1024 512 \
+    --n-envs 16 \
+    --n-steps 1024 \
+    --learning-rate 1.5e-4 \
+    --batch-size 4096 \
+    --n-epochs 2 \
+    --gamma 0.995 \
+    > "$LAUNCH_LOG_DIR/config6_onehot_sparse_1024.log" 2>&1 &
+PID6=$!
+echo "Started Config 6 (PID: $PID6)"
+echo "Log: $LAUNCH_LOG_DIR/config6_onehot_sparse_1024.log"
 echo ""

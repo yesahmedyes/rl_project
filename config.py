@@ -5,23 +5,24 @@ from typing import Optional
 @dataclass
 class TrainingConfig:
     encoding_type: str = "handcrafted"  # "handcrafted" or "onehot"
-    n_envs: int = 48
+    n_envs: int = 16
     agent_player: Optional[int] = None
 
     normalize_reward = True
+    use_dense_reward: bool = False  # True for dense rewards, False for sparse rewards
 
     # PPO hyperparameters
     learning_rate: float = 3e-4
-    n_steps: int = 1024  # Steps per environment before update
-    batch_size: int = 512  # Minibatch size
-    n_epochs: int = 5  # Number of epochs when optimizing the surrogate loss
-    gamma: float = 0.99  # Discount factor
+    n_steps: int = 512  # Steps per environment before update
+    batch_size: int = 2048  # Minibatch size
+    n_epochs: int = 3  # Number of epochs when optimizing the surrogate loss
+    gamma: float = 0.995  # Discount factor
     gae_lambda: float = 0.95  # GAE parameter
     clip_range: float = 0.2  # PPO clipping parameter
     clip_range_vf: Optional[float] = None  # Clipping for value function
-    ent_coef: float = 0.10  # Entropy coefficient
-    vf_coef: float = 1.0  # Value function coefficient
-    max_grad_norm: float = 1.0  # Gradient clipping
+    ent_coef: float = 0.005  # Entropy coefficient
+    vf_coef: float = 0.5  # Value function coefficient
+    max_grad_norm: float = 0.5  # Gradient clipping
 
     # Network architecture
     net_arch: list = None  # Network architecture (will be applied to both pi and vf)
@@ -58,7 +59,7 @@ class TrainingConfig:
     def __post_init__(self):
         # Set default net_arch if not provided
         if self.net_arch is None:
-            self.net_arch = [512, 512, 256]
+            self.net_arch = [256, 256, 128]
 
         if self.policy_kwargs is None:
             if self.encoding_type == "handcrafted":
@@ -84,6 +85,7 @@ class TrainingConfig:
             parts.append(f"stage{stage}")
 
         parts.append(self.encoding_type)
+        parts.append("dense" if self.use_dense_reward else "sparse")
         parts.append(f"lr{self.learning_rate:.0e}")
         parts.append(f"ent{self.ent_coef}")
         parts.append(f"batch{self.batch_size}")

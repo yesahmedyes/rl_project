@@ -49,13 +49,16 @@ class CurriculumCallback(BaseCallback):
             print(f"{'=' * 60}")
 
         win_rates = {}
+
         for opponent_type in opponent_types:
             win_rate = quick_eval(
                 model=self.model,
                 opponent_type=opponent_type,
                 n_episodes=self.n_eval_episodes,
                 encoding_type=self.config.encoding_type,
+                use_dense_reward=self.config.use_dense_reward,
             )
+
             win_rates[opponent_type] = win_rate
 
             # Log win rate for each opponent

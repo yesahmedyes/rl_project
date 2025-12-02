@@ -69,6 +69,7 @@ def train_stage(
             seed=config.seed,
             opponent_model_path=config.self_play_opponent_model_path,
             opponent_device=config.self_play_opponent_device,
+            use_dense_reward=config.use_dense_reward,
         )
     else:
         vec_env = make_vec_env(
@@ -79,6 +80,7 @@ def train_stage(
             log_dir=stage_log_dir,
             seed=config.seed,
             use_subprocess=True,
+            use_dense_reward=config.use_dense_reward,
         )
 
     # Wrap with VecNormalize for reward normalization if enabled
@@ -182,55 +184,22 @@ def train_stage(
 
 
 def train_curriculum(
-    encoding_type: str = None,
+    config: TrainingConfig,
     gpu_id: int = 0,
     resume_from: str = None,
-    learning_rate: float = None,
-    ent_coef: float = None,
-    net_arch: list = None,
-    batch_size: int = None,
     reload_configs: bool = False,
-    self_play_opponent_path: str = None,
-    self_play_opponent_device: str = None,
-    n_epochs: int = None,
-    total_timesteps_stage1: int = None,
-    total_timesteps_stage2: int = None,
-    total_timesteps_stage3: int = None,
 ):
-    config_kwargs = {}
-
-    if encoding_type is not None:
-        config_kwargs["encoding_type"] = encoding_type
-    if learning_rate is not None:
-        config_kwargs["learning_rate"] = learning_rate
-    if ent_coef is not None:
-        config_kwargs["ent_coef"] = ent_coef
-    if net_arch is not None:
-        config_kwargs["net_arch"] = net_arch
-    if batch_size is not None:
-        config_kwargs["batch_size"] = batch_size
-    if self_play_opponent_path is not None:
-        config_kwargs["self_play_opponent_model_path"] = self_play_opponent_path
-    if self_play_opponent_device is not None:
-        config_kwargs["self_play_opponent_device"] = self_play_opponent_device
-    if n_epochs is not None:
-        config_kwargs["n_epochs"] = n_epochs
-    if total_timesteps_stage1 is not None:
-        config_kwargs["total_timesteps_stage1"] = total_timesteps_stage1
-    if total_timesteps_stage2 is not None:
-        config_kwargs["total_timesteps_stage2"] = total_timesteps_stage2
-    if total_timesteps_stage3 is not None:
-        config_kwargs["total_timesteps_stage3"] = total_timesteps_stage3
-
-    config = TrainingConfig(**config_kwargs)
-
     print("\n" + "=" * 60)
     print("Starting Curriculum Training")
-    print(f"Encoding Type: {encoding_type}")
-    print(f"Learning Rate: {learning_rate}")
-    print(f"Entropy Coefficient: {ent_coef}")
+    print(f"Encoding Type: {config.encoding_type}")
+    print(f"Reward Type: {'Dense' if config.use_dense_reward else 'Sparse'}")
+    print(f"Learning Rate: {config.learning_rate}")
+    print(f"Entropy Coefficient: {config.ent_coef}")
     print(f"Network Architecture: {config.net_arch}")
     print(f"Batch Size: {config.batch_size}")
+    print(f"N Envs: {config.n_envs}")
+    print(f"N Steps: {config.n_steps}")
+    print(f"Gamma: {config.gamma}")
     print(f"GPU ID: {gpu_id}")
     if config.self_play_opponent_model_path:
         print(f"Self-Play Opponent: {config.self_play_opponent_model_path}")
@@ -373,25 +342,99 @@ def main():
         default=None,
         help="Total timesteps for stage 3 training (default: 100_000_000)",
     )
+    parser.add_argument(
+        "--dense-reward",
+        action="store_true",
+        help="Use dense reward shaping (default: sparse rewards)",
+    )
+    parser.add_argument(
+        "--n-envs",
+        type=int,
+        default=None,
+        help="Number of parallel environments (default: 16)",
+    )
+    parser.add_argument(
+        "--n-steps",
+        type=int,
+        default=None,
+        help="Number of steps per environment before update (default: 512)",
+    )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=None,
+        help="Discount factor (default: 0.995)",
+    )
+    parser.add_argument(
+        "--gae-lambda",
+        type=float,
+        default=None,
+        help="GAE lambda parameter (default: 0.95)",
+    )
+    parser.add_argument(
+        "--clip-range",
+        type=float,
+        default=None,
+        help="PPO clipping parameter (default: 0.2)",
+    )
+    parser.add_argument(
+        "--max-grad-norm",
+        type=float,
+        default=None,
+        help="Gradient clipping threshold (default: 0.5)",
+    )
 
     args = parser.parse_args()
 
+    # Build config kwargs from command-line arguments
+    config_kwargs = {}
+
+    if args.encoding is not None:
+        config_kwargs["encoding_type"] = args.encoding
+    if args.learning_rate is not None:
+        config_kwargs["learning_rate"] = args.learning_rate
+    if args.ent_coef is not None:
+        config_kwargs["ent_coef"] = args.ent_coef
+    if args.net_arch is not None:
+        config_kwargs["net_arch"] = args.net_arch
+    if args.batch_size is not None:
+        config_kwargs["batch_size"] = args.batch_size
+    if args.self_play_opponent is not None:
+        config_kwargs["self_play_opponent_model_path"] = args.self_play_opponent
+    if args.self_play_opponent_device is not None:
+        config_kwargs["self_play_opponent_device"] = args.self_play_opponent_device
+    if args.n_epochs is not None:
+        config_kwargs["n_epochs"] = args.n_epochs
+    if args.total_timesteps_stage1 is not None:
+        config_kwargs["total_timesteps_stage1"] = args.total_timesteps_stage1
+    if args.total_timesteps_stage2 is not None:
+        config_kwargs["total_timesteps_stage2"] = args.total_timesteps_stage2
+    if args.total_timesteps_stage3 is not None:
+        config_kwargs["total_timesteps_stage3"] = args.total_timesteps_stage3
+    if args.dense_reward:
+        config_kwargs["use_dense_reward"] = True
+    if args.n_envs is not None:
+        config_kwargs["n_envs"] = args.n_envs
+    if args.n_steps is not None:
+        config_kwargs["n_steps"] = args.n_steps
+    if args.gamma is not None:
+        config_kwargs["gamma"] = args.gamma
+    if args.gae_lambda is not None:
+        config_kwargs["gae_lambda"] = args.gae_lambda
+    if args.clip_range is not None:
+        config_kwargs["clip_range"] = args.clip_range
+    if args.max_grad_norm is not None:
+        config_kwargs["max_grad_norm"] = args.max_grad_norm
+
+    # Create config
+    config = TrainingConfig(**config_kwargs)
+
     # Train
     train_curriculum(
-        encoding_type=args.encoding,
+        config=config,
         gpu_id=args.gpu,
         resume_from=args.resume,
-        learning_rate=args.learning_rate,
-        ent_coef=args.ent_coef,
-        net_arch=args.net_arch,
-        batch_size=args.batch_size,
         reload_configs=args.reload_configs,
-        self_play_opponent_path=args.self_play_opponent,
-        self_play_opponent_device=args.self_play_opponent_device,
-        n_epochs=args.n_epochs,
-        total_timesteps_stage1=args.total_timesteps_stage1,
-        total_timesteps_stage2=args.total_timesteps_stage2,
-        total_timesteps_stage3=args.total_timesteps_stage3,
     )
 
 

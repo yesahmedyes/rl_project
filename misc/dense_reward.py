@@ -1,6 +1,16 @@
 from env.ludo import DESTINATION, SAFE_SQUARES, STARTING
 
 
+def calculate_sparse_reward(
+    terminated: bool,
+    agent_won: bool,
+) -> float:
+    if terminated:
+        return 1.0 if agent_won else -1.0
+
+    return 0.0
+
+
 def calculate_dense_reward(
     state_before,
     state_after,

@@ -14,6 +14,7 @@ def evaluate_agent(
     use_deterministic: bool = True,
     seed: int = 0,
     verbose: bool = True,
+    use_dense_reward: bool = True,
 ) -> Dict[str, Any]:
     env = make_eval_env(
         encoding_type=encoding_type,
@@ -21,6 +22,7 @@ def evaluate_agent(
         opponent_policy=opponent_policy,
         agent_player=agent_player,
         seed=seed,
+        use_dense_reward=use_dense_reward,
     )
 
     wins = 0
@@ -108,6 +110,7 @@ def evaluate_alternating_players(
     use_deterministic: bool = True,
     seed: int = 0,
     verbose: bool = True,
+    use_dense_reward: bool = True,
 ) -> Dict[str, Any]:
     n_per_position = n_eval_episodes // 2
 
@@ -122,6 +125,7 @@ def evaluate_alternating_players(
         use_deterministic=use_deterministic,
         seed=seed,
         verbose=False,
+        use_dense_reward=use_dense_reward,
     )
 
     # Evaluate as player 1
@@ -135,6 +139,7 @@ def evaluate_alternating_players(
         use_deterministic=use_deterministic,
         seed=seed + 10000,
         verbose=False,
+        use_dense_reward=use_dense_reward,
     )
 
     # Combine results
@@ -172,6 +177,7 @@ def quick_eval(
     opponent_type: str = "random",
     n_episodes: int = 100,
     encoding_type: str = "handcrafted",
+    use_dense_reward: bool = True,
 ):
     results = evaluate_alternating_players(
         model=model,
@@ -180,6 +186,7 @@ def quick_eval(
         encoding_type=encoding_type,
         use_deterministic=True,
         verbose=False,
+        use_dense_reward=use_dense_reward,
     )
 
     return results["win_rate"]

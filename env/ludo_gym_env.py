@@ -4,7 +4,7 @@ from gymnasium import spaces
 from typing import Optional, Tuple, Dict, Any
 from env.ludo import Ludo
 from misc.state_encoding import encode_handcrafted_state, encode_onehot_state
-from misc.dense_reward import calculate_dense_reward
+from misc.dense_reward import calculate_dense_reward, calculate_sparse_reward
 from policies.policy_random import Policy_Random
 from policies.policy_heuristic import Policy_Heuristic
 
@@ -19,6 +19,7 @@ class LudoGymEnv(gym.Env):
         opponent_type: str = "random",
         agent_player: Optional[int] = 0,
         render_mode: Optional[str] = None,
+        use_dense_reward: bool = True,
     ):
         super().__init__()
 
@@ -29,6 +30,7 @@ class LudoGymEnv(gym.Env):
         )
         self.render_mode = render_mode
         self.opponent_type = opponent_type
+        self.use_dense_reward = use_dense_reward
 
         self.env = Ludo(render_mode="" if render_mode is None else render_mode)
 
@@ -190,13 +192,16 @@ class LudoGymEnv(gym.Env):
                 agent_won = player_turn == self.agent_player
 
             # Calculate proper reward
-            reward = calculate_dense_reward(
-                self.prev_state,
-                self.current_state,
-                terminated,
-                agent_won,
-                self.agent_player,
-            )
+            if self.use_dense_reward:
+                reward = calculate_dense_reward(
+                    self.prev_state,
+                    self.current_state,
+                    terminated,
+                    agent_won,
+                    self.agent_player,
+                )
+            else:
+                reward = calculate_sparse_reward(terminated, agent_won)
             obs = self._encode_state(self.current_state)
 
             info = {
@@ -252,13 +257,16 @@ class LudoGymEnv(gym.Env):
                 agent_won = player_turn == self.agent_player
 
         # Calculate reward
-        reward = calculate_dense_reward(
-            self.prev_state,
-            self.current_state,
-            terminated,
-            agent_won,
-            self.agent_player,
-        )
+        if self.use_dense_reward:
+            reward = calculate_dense_reward(
+                self.prev_state,
+                self.current_state,
+                terminated,
+                agent_won,
+                self.agent_player,
+            )
+        else:
+            reward = calculate_sparse_reward(terminated, agent_won)
 
         # Encode observation
         obs = self._encode_state(self.current_state)

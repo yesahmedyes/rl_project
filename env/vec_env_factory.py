@@ -17,6 +17,7 @@ def make_ludo_env(
     agent_player: int = 0,
     log_dir: Optional[str] = None,
     seed: int = 0,
+    use_dense_reward: bool = True,
 ) -> Callable:
     def _init():
         from env.ludo_gym_env import LudoGymEnv
@@ -26,6 +27,7 @@ def make_ludo_env(
             opponent_policy=opponent_policy,
             opponent_type=opponent_type,
             agent_player=agent_player,
+            use_dense_reward=use_dense_reward,
         )
 
         # Set seed for reproducibility
@@ -53,6 +55,7 @@ def make_vec_env(
     log_dir: Optional[str] = None,
     seed: int = 0,
     use_subprocess: bool = True,
+    use_dense_reward: bool = True,
 ) -> SubprocVecEnv:
     env_fns = [
         make_ludo_env(
@@ -63,6 +66,7 @@ def make_vec_env(
             agent_player=agent_player,
             log_dir=log_dir,
             seed=seed,
+            use_dense_reward=use_dense_reward,
         )
         for i in range(n_envs)
     ]
@@ -82,6 +86,7 @@ def make_eval_env(
     opponent_policy: Optional[Any] = None,
     agent_player: int = 0,
     seed: int = 0,
+    use_dense_reward: bool = True,
 ):
     from env.ludo_gym_env import LudoGymEnv
 
@@ -90,6 +95,7 @@ def make_eval_env(
         opponent_policy=opponent_policy,
         opponent_type=opponent_type,
         agent_player=agent_player,
+        use_dense_reward=use_dense_reward,
     )
 
     env.reset(seed=seed)
@@ -112,6 +118,7 @@ class SelfPlayVecEnv(VecEnv):
         use_subprocess: bool = True,
         opponent_model_path: Optional[str] = None,
         opponent_device: str = "cpu",
+        use_dense_reward: bool = True,
     ):
         self.n_envs = n_envs
         self.encoding_type = encoding_type
@@ -121,6 +128,7 @@ class SelfPlayVecEnv(VecEnv):
         self.use_subprocess = use_subprocess
         self.opponent_model_path = opponent_model_path
         self.opponent_device = opponent_device
+        self.use_dense_reward = use_dense_reward
 
         # Load opponent model if path is provided
         opponent_policy = None
@@ -151,6 +159,7 @@ class SelfPlayVecEnv(VecEnv):
             log_dir=log_dir,
             seed=seed,
             use_subprocess=use_subprocess,
+            use_dense_reward=self.use_dense_reward,
         )
 
         # Initialize VecEnv base class
@@ -210,6 +219,7 @@ class BatchedOpponentVecEnv(VecEnv):
         seed: int = 0,
         opponent_model_path: Optional[str] = None,
         opponent_device: str = "cpu",
+        use_dense_reward: bool = True,
     ):
         self.n_envs = n_envs
         self.encoding_type = encoding_type
@@ -217,6 +227,7 @@ class BatchedOpponentVecEnv(VecEnv):
         self.log_dir = log_dir
         self.seed = seed
         self.opponent_device = opponent_device
+        self.use_dense_reward = use_dense_reward
 
         # Load opponent model ONCE in main process
         self.opponent_policy = None
@@ -244,6 +255,7 @@ class BatchedOpponentVecEnv(VecEnv):
                 agent_player=agent_player,
                 log_dir=log_dir,
                 seed=seed,
+                use_dense_reward=self.use_dense_reward,
             )
             for i in range(n_envs)
         ]
