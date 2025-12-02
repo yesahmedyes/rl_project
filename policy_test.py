@@ -3,7 +3,6 @@ from policies.policy_heuristic import Policy_Heuristic
 from policies.milestone2 import Policy_Milestone2
 from policies.policy_snakes import Policy_Snakes
 from env.ludo import Ludo
-from tqdm import tqdm
 import argparse
 import os
 
@@ -14,7 +13,7 @@ def get_win_percentages(n, policy1, policy2):
     policies = [policy1, policy2]
 
     for i in range(2):
-        for _ in tqdm(range(n // 2)):
+        for _ in range(n // 2):
             state = env.reset()
             terminated = False
             player_turn = 0
@@ -88,7 +87,6 @@ if __name__ == "__main__":
             ),
         )
 
-        print(f"  {opponent_name} win rate: {results[0]:.2f}%")
         print(f"  {model_name} win rate: {results[1]:.2f}%")
 
     print(f"\nCompleted testing for {model_name}")

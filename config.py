@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, List
 
 
@@ -40,11 +40,21 @@ class TrainingConfig:
     total_timesteps_stage4: int = 100_000_000
 
     # Opponent distributions: [random, heuristic, milestone2] ratios
-    opponent_distribution_stage0: List[float] = [1.0, 0.0, 0.0]
-    opponent_distribution_stage1: List[float] = [0.8, 0.1, 0.1]
-    opponent_distribution_stage2: List[float] = [0.6, 0.2, 0.2]
-    opponent_distribution_stage3: List[float] = [0.4, 0.3, 0.3]
-    opponent_distribution_stage4: List[float] = [0.2, 0.4, 0.4]
+    opponent_distribution_stage0: List[float] = field(
+        default_factory=lambda: [1.0, 0.0, 0.0]
+    )
+    opponent_distribution_stage1: List[float] = field(
+        default_factory=lambda: [0.8, 0.1, 0.1]
+    )
+    opponent_distribution_stage2: List[float] = field(
+        default_factory=lambda: [0.6, 0.2, 0.2]
+    )
+    opponent_distribution_stage3: List[float] = field(
+        default_factory=lambda: [0.4, 0.3, 0.3]
+    )
+    opponent_distribution_stage4: List[float] = field(
+        default_factory=lambda: [0.2, 0.4, 0.4]
+    )
 
     # Stage transition thresholds
     stage0_threshold: float = 0.75  # ≥75% win rate vs random
