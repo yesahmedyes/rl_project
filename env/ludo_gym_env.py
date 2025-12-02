@@ -7,6 +7,7 @@ from misc.state_encoding import encode_handcrafted_state, encode_onehot_state
 from misc.dense_reward import calculate_dense_reward, calculate_sparse_reward
 from policies.policy_random import Policy_Random
 from policies.policy_heuristic import Policy_Heuristic
+from policies.milestone2 import Policy_Milestone2
 
 
 class LudoGymEnv(gym.Env):
@@ -40,6 +41,8 @@ class LudoGymEnv(gym.Env):
             self.opponent_policy = Policy_Random()
         elif opponent_type == "heuristic":
             self.opponent_policy = Policy_Heuristic()
+        elif opponent_type == "milestone2":
+            self.opponent_policy = Policy_Milestone2()
         elif opponent_type == "self":
             self.opponent_policy = None
         else:

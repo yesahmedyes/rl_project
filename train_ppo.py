@@ -31,14 +31,28 @@ warnings.filterwarnings(
 def train_stage(
     config: TrainingConfig,
     stage: int,
-    opponent_type: str,
+    opponent_distribution: list,
     total_timesteps: int,
     model=None,
     gpu_id: int = 0,
     reload_configs: bool = False,
+    use_self_play_env: bool = False,
 ):
+    # Format opponent info for display
+    if use_self_play_env:
+        opponent_info = "Self-Play"
+    else:
+        opponent_names = ["Random", "Heuristic", "Milestone2"]
+        opponent_info = ", ".join(
+            [
+                f"{name}: {dist * 100:.0f}%"
+                for name, dist in zip(opponent_names, opponent_distribution)
+                if dist > 0
+            ]
+        )
+
     print(f"\n{'#' * 60}")
-    print(f"Starting Stage {stage}: Training vs {opponent_type}")
+    print(f"Starting Stage {stage}: Training vs {opponent_info}")
     print(f"Encoding: {config.encoding_type}")
     print(f"Total timesteps: {total_timesteps:,}")
     print(f"{'#' * 60}\n")
@@ -59,7 +73,7 @@ def train_stage(
     stage_log_dir = os.path.join(config.log_dir, f"stage{stage}_{config.encoding_type}")
 
     # Create vectorized environment
-    if stage == 3:
+    if use_self_play_env:
         # Self-play environment with batched GPU opponent
         vec_env = BatchedOpponentVecEnv(
             n_envs=config.n_envs,
@@ -75,7 +89,7 @@ def train_stage(
         vec_env = make_vec_env(
             n_envs=config.n_envs,
             encoding_type=config.encoding_type,
-            opponent_type=opponent_type,
+            opponent_distribution=opponent_distribution,
             agent_player=config.agent_player,
             log_dir=stage_log_dir,
             seed=config.seed,
@@ -155,8 +169,6 @@ def train_stage(
         config=config,
         eval_freq=config.eval_freq,
         n_eval_episodes=config.n_eval_episodes,
-        stage1_threshold=config.stage1_threshold,
-        stage2_threshold=config.stage2_threshold,
         verbose=config.verbose,
     )
     curriculum_callback.current_stage = stage
@@ -164,6 +176,7 @@ def train_stage(
 
     # Train
     print("\nStarting training...")
+
     model.learn(
         total_timesteps=total_timesteps,
         callback=callbacks,
@@ -174,7 +187,9 @@ def train_stage(
     # Save latest model
     latest_model_name = config.get_model_name(prefix="latest", stage=stage)
     latest_model_path = os.path.join(config.save_dir, latest_model_name)
+
     model.save(latest_model_path)
+
     print(f"\nSaved latest model to {latest_model_path}")
 
     # Close environment
@@ -183,14 +198,14 @@ def train_stage(
     return model
 
 
-def train_curriculum(
+def train_self_play(
     config: TrainingConfig,
     gpu_id: int = 0,
     resume_from: str = None,
     reload_configs: bool = False,
 ):
     print("\n" + "=" * 60)
-    print("Starting Curriculum Training")
+    print("Starting Self-Play Training")
     print(f"Encoding Type: {config.encoding_type}")
     print(f"Reward Type: {'Dense' if config.use_dense_reward else 'Sparse'}")
     print(f"Learning Rate: {config.learning_rate}")
@@ -201,13 +216,79 @@ def train_curriculum(
     print(f"N Steps: {config.n_steps}")
     print(f"Gamma: {config.gamma}")
     print(f"GPU ID: {gpu_id}")
+
     if config.self_play_opponent_model_path:
         print(f"Self-Play Opponent: {config.self_play_opponent_model_path}")
         print(f"Self-Play Opponent Device: {config.self_play_opponent_device}")
+
+    print("=" * 60 + "\n")
+
+    model = None
+
+    if resume_from is not None:
+        print(f"Loading model from {resume_from}...")
+        model = MaskablePPO.load(resume_from)
+
+        if reload_configs:
+            update_model_hyperparameters(model, config)
+
+    # Train with self-play
+    model = train_stage(
+        config=config,
+        stage=0,  # Use stage 0 for self-play
+        opponent_distribution=[0.0, 0.0, 0.0],  # Not used for self-play
+        total_timesteps=config.total_timesteps,
+        model=model,
+        gpu_id=gpu_id,
+        reload_configs=reload_configs,
+        use_self_play_env=True,
+    )
+
+    print("\n" + "=" * 60)
+    print("Self-Play Training Complete!")
+    print("=" * 60 + "\n")
+
+    return model
+
+
+def train_curriculum(
+    config: TrainingConfig,
+    gpu_id: int = 0,
+    resume_from: str = None,
+    reload_configs: bool = False,
+):
+    """Train agent using 5-stage curriculum learning with automatic transitions."""
+    print("\n" + "=" * 60)
+    print("Starting 5-Stage Curriculum Training")
+    print(f"Encoding Type: {config.encoding_type}")
+    print(f"Reward Type: {'Dense' if config.use_dense_reward else 'Sparse'}")
+    print(f"Learning Rate: {config.learning_rate}")
+    print(f"Entropy Coefficient: {config.ent_coef}")
+    print(f"Network Architecture: {config.net_arch}")
+    print(f"Batch Size: {config.batch_size}")
+    print(f"N Envs: {config.n_envs}")
+    print(f"N Steps: {config.n_steps}")
+    print(f"Gamma: {config.gamma}")
+    print(f"GPU ID: {gpu_id}")
+    print("\nCurriculum Stages:")
+    print(
+        f"  Stage 0: 100% Random (threshold: {config.stage0_threshold * 100:.0f}% vs random)"
+    )
+    print(
+        f"  Stage 1: 80% Random, 10% Heuristic, 10% Milestone2 (threshold: {config.stage1_threshold * 100:.0f}% vs random)"
+    )
+    print(
+        f"  Stage 2: 60% Random, 20% Heuristic, 20% Milestone2 (threshold: {config.stage2_threshold * 100:.0f}% vs random)"
+    )
+    print(
+        f"  Stage 3: 40% Random, 30% Heuristic, 30% Milestone2 (threshold: {config.stage3_threshold * 100:.0f}% vs milestone2)"
+    )
+    print("  Stage 4: 20% Random, 40% Heuristic, 40% Milestone2 (final optimization)")
     print("=" * 60 + "\n")
 
     # Load existing model if resuming
     model = None
+
     if resume_from is not None:
         print(f"Loading model from {resume_from}...")
         model = MaskablePPO.load(resume_from)
@@ -216,47 +297,98 @@ def train_curriculum(
         if reload_configs:
             update_model_hyperparameters(model, config)
 
-    # Stage 1: Train vs Random
+    # Stage 0: 100% Random
+    if config.total_timesteps_stage0 > 0:
+        model = train_stage(
+            config=config,
+            stage=0,
+            opponent_distribution=config.opponent_distribution_stage0,
+            total_timesteps=config.total_timesteps_stage0,
+            model=model,
+            gpu_id=gpu_id,
+            reload_configs=reload_configs,
+            use_self_play_env=False,
+        )
+
+    # Stage 1: 80% Random, 10% Heuristic, 10% Milestone2
     if config.total_timesteps_stage1 > 0:
         model = train_stage(
             config=config,
             stage=1,
-            opponent_type="random",
+            opponent_distribution=config.opponent_distribution_stage1,
             total_timesteps=config.total_timesteps_stage1,
             model=model,
             gpu_id=gpu_id,
             reload_configs=reload_configs,
+            use_self_play_env=False,
         )
 
-    # Stage 2: Train vs Heuristic
+    # Stage 2: 60% Random, 20% Heuristic, 20% Milestone2
     if config.total_timesteps_stage2 > 0:
         model = train_stage(
             config=config,
             stage=2,
-            opponent_type="heuristic",
+            opponent_distribution=config.opponent_distribution_stage2,
             total_timesteps=config.total_timesteps_stage2,
             model=model,
             gpu_id=gpu_id,
             reload_configs=reload_configs,
+            use_self_play_env=False,
         )
 
-    # Stage 3: Self-Play
-    model = train_stage(
-        config=config,
-        stage=3,
-        opponent_type="self",
-        total_timesteps=config.total_timesteps_stage3,
-        model=model,
-        gpu_id=gpu_id,
-        reload_configs=reload_configs,
-    )
+    # Stage 3: 40% Random, 30% Heuristic, 30% Milestone2
+    if config.total_timesteps_stage3 > 0:
+        model = train_stage(
+            config=config,
+            stage=3,
+            opponent_distribution=config.opponent_distribution_stage3,
+            total_timesteps=config.total_timesteps_stage3,
+            model=model,
+            gpu_id=gpu_id,
+            reload_configs=reload_configs,
+            use_self_play_env=False,
+        )
 
-    # Final evaluation
+    # Stage 4: 20% Random, 40% Heuristic, 40% Milestone2
+    if config.total_timesteps_stage4 > 0:
+        model = train_stage(
+            config=config,
+            stage=4,
+            opponent_distribution=config.opponent_distribution_stage4,
+            total_timesteps=config.total_timesteps_stage4,
+            model=model,
+            gpu_id=gpu_id,
+            reload_configs=reload_configs,
+            use_self_play_env=False,
+        )
+
     print("\n" + "=" * 60)
-    print("Training Complete!")
+    print("5-Stage Curriculum Training Complete!")
     print("=" * 60 + "\n")
 
     return model
+
+
+def train(
+    config: TrainingConfig,
+    gpu_id: int = 0,
+    resume_from: str = None,
+    reload_configs: bool = False,
+):
+    if config.use_self_play:
+        return train_self_play(
+            config=config,
+            gpu_id=gpu_id,
+            resume_from=resume_from,
+            reload_configs=reload_configs,
+        )
+    else:
+        return train_curriculum(
+            config=config,
+            gpu_id=gpu_id,
+            resume_from=resume_from,
+            reload_configs=reload_configs,
+        )
 
 
 def main():
@@ -319,28 +451,91 @@ def main():
         help="Device for opponent model (e.g., 'cpu', 'cuda:1'). Default: cpu",
     )
     parser.add_argument(
+        "--use-self-play",
+        action="store_true",
+        help="Use self-play training instead of curriculum learning",
+    )
+    parser.add_argument(
         "--n-epochs",
         type=int,
         default=None,
         help="Number of epochs when optimizing the surrogate loss (default: 5)",
     )
     parser.add_argument(
+        "--total-timesteps",
+        type=int,
+        default=None,
+        help="Total timesteps for self-play training (default: 100_000_000)",
+    )
+    parser.add_argument(
+        "--total-timesteps-stage0",
+        type=int,
+        default=None,
+        help="Total timesteps for stage 0 (curriculum only) (default: 50_000_000)",
+    )
+    parser.add_argument(
         "--total-timesteps-stage1",
         type=int,
         default=None,
-        help="Total timesteps for stage 1 training (default: 100_000_000)",
+        help="Total timesteps for stage 1 (curriculum only) (default: 50_000_000)",
     )
     parser.add_argument(
         "--total-timesteps-stage2",
         type=int,
         default=None,
-        help="Total timesteps for stage 2 training (default: 100_000_000)",
+        help="Total timesteps for stage 2 (curriculum only) (default: 50_000_000)",
     )
     parser.add_argument(
         "--total-timesteps-stage3",
         type=int,
         default=None,
-        help="Total timesteps for stage 3 training (default: 100_000_000)",
+        help="Total timesteps for stage 3 (curriculum only) (default: 100_000_000)",
+    )
+    parser.add_argument(
+        "--total-timesteps-stage4",
+        type=int,
+        default=None,
+        help="Total timesteps for stage 4 (curriculum only) (default: 100_000_000)",
+    )
+    parser.add_argument(
+        "--opponent-dist-stage0",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("RANDOM", "HEURISTIC", "MILESTONE2"),
+        help="Opponent distribution for stage 0 (must sum to 1.0). Default: [1, 0, 0]",
+    )
+    parser.add_argument(
+        "--opponent-dist-stage1",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("RANDOM", "HEURISTIC", "MILESTONE2"),
+        help="Opponent distribution for stage 1 (must sum to 1.0). Default: [0.8, 0.1, 0.1]",
+    )
+    parser.add_argument(
+        "--opponent-dist-stage2",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("RANDOM", "HEURISTIC", "MILESTONE2"),
+        help="Opponent distribution for stage 2 (must sum to 1.0). Default: [0.6, 0.2, 0.2]",
+    )
+    parser.add_argument(
+        "--opponent-dist-stage3",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("RANDOM", "HEURISTIC", "MILESTONE2"),
+        help="Opponent distribution for stage 3 (must sum to 1.0). Default: [0.4, 0.3, 0.3]",
+    )
+    parser.add_argument(
+        "--opponent-dist-stage4",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("RANDOM", "HEURISTIC", "MILESTONE2"),
+        help="Opponent distribution for stage 4 (must sum to 1.0). Default: [0.2, 0.4, 0.4]",
     )
     parser.add_argument(
         "--dense-reward",
@@ -403,14 +598,32 @@ def main():
         config_kwargs["self_play_opponent_model_path"] = args.self_play_opponent
     if args.self_play_opponent_device is not None:
         config_kwargs["self_play_opponent_device"] = args.self_play_opponent_device
+    if args.use_self_play:
+        config_kwargs["use_self_play"] = True
     if args.n_epochs is not None:
         config_kwargs["n_epochs"] = args.n_epochs
+    if args.total_timesteps is not None:
+        config_kwargs["total_timesteps"] = args.total_timesteps
+    if args.total_timesteps_stage0 is not None:
+        config_kwargs["total_timesteps_stage0"] = args.total_timesteps_stage0
     if args.total_timesteps_stage1 is not None:
         config_kwargs["total_timesteps_stage1"] = args.total_timesteps_stage1
     if args.total_timesteps_stage2 is not None:
         config_kwargs["total_timesteps_stage2"] = args.total_timesteps_stage2
     if args.total_timesteps_stage3 is not None:
         config_kwargs["total_timesteps_stage3"] = args.total_timesteps_stage3
+    if args.total_timesteps_stage4 is not None:
+        config_kwargs["total_timesteps_stage4"] = args.total_timesteps_stage4
+    if args.opponent_dist_stage0 is not None:
+        config_kwargs["opponent_distribution_stage0"] = args.opponent_dist_stage0
+    if args.opponent_dist_stage1 is not None:
+        config_kwargs["opponent_distribution_stage1"] = args.opponent_dist_stage1
+    if args.opponent_dist_stage2 is not None:
+        config_kwargs["opponent_distribution_stage2"] = args.opponent_dist_stage2
+    if args.opponent_dist_stage3 is not None:
+        config_kwargs["opponent_distribution_stage3"] = args.opponent_dist_stage3
+    if args.opponent_dist_stage4 is not None:
+        config_kwargs["opponent_distribution_stage4"] = args.opponent_dist_stage4
     if args.dense_reward:
         config_kwargs["use_dense_reward"] = True
     if args.n_envs is not None:
@@ -430,7 +643,7 @@ def main():
     config = TrainingConfig(**config_kwargs)
 
     # Train
-    train_curriculum(
+    train(
         config=config,
         gpu_id=args.gpu,
         resume_from=args.resume,

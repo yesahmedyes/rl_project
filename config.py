@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 
 
 @dataclass
@@ -29,17 +29,40 @@ class TrainingConfig:
     policy_kwargs: dict = None  # Will be set in __post_init__
 
     # Training settings
+    use_self_play: bool = False
+    total_timesteps: int = 100_000_000  # Total timesteps for training (self-play only)
+
+    # 5-Stage Curriculum Learning
+    total_timesteps_stage0: int = 100_000_000
     total_timesteps_stage1: int = 100_000_000
     total_timesteps_stage2: int = 100_000_000
     total_timesteps_stage3: int = 100_000_000
+    total_timesteps_stage4: int = 100_000_000
 
-    # Curriculum learning
-    stage1_threshold: float = 0.75
-    stage2_threshold: float = 0.75
+    # Opponent distributions: [random, heuristic, milestone2] ratios
+    opponent_distribution_stage0: List[float] = [1.0, 0.0, 0.0]
+    opponent_distribution_stage1: List[float] = [0.8, 0.1, 0.1]
+    opponent_distribution_stage2: List[float] = [0.6, 0.2, 0.2]
+    opponent_distribution_stage3: List[float] = [0.4, 0.3, 0.3]
+    opponent_distribution_stage4: List[float] = [0.2, 0.4, 0.4]
+
+    # Stage transition thresholds
+    stage0_threshold: float = 0.75  # ≥75% win rate vs random
+    stage0_eval_opponent: str = "random"
+
+    stage1_threshold: float = 0.80  # ≥80% win rate vs random
+    stage1_eval_opponent: str = "random"
+
+    stage2_threshold: float = 0.85  # ≥85% win rate vs random
+    stage2_eval_opponents: str = "random"
+
+    stage3_threshold: float = 0.35  # ≥35% win rate vs heuristic
+    stage3_eval_opponents: str = "heuristic"
+
     eval_freq: int = 500_000  # Evaluate every N timesteps
-    n_eval_episodes: int = 1000  # Number of episodes for evaluation
+    n_eval_episodes: int = 400
 
-    # Self-play settings
+    # Self-play settings (only used if use_self_play=True)
     self_play_opponent_model_path: Optional[str] = None
     self_play_opponent_device: str = "cpu"
 

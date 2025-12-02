@@ -10,8 +10,6 @@ class CurriculumCallback(BaseCallback):
         config: TrainingConfig,
         eval_freq: int,
         n_eval_episodes: int,
-        stage1_threshold: float,
-        stage2_threshold: float,
         verbose: int = 1,
     ):
         super().__init__(verbose)
@@ -19,42 +17,38 @@ class CurriculumCallback(BaseCallback):
         self.config = config
         self.eval_freq = eval_freq
         self.n_eval_episodes = n_eval_episodes
-        self.stage1_threshold = stage1_threshold
-        self.stage2_threshold = stage2_threshold
 
-        self.current_stage = 1
+        self.current_stage = 0  # Start from stage 0
         self.stage_advanced = False
-        self.best_win_rate = 0.0  # For stages 1 and 2
-        self.best_win_rates = {}  # For stage 3: {"random": 0.0, "heuristic": 0.0}
+        self.best_win_rate = 0.0  # For stages with single opponent evaluation
+        self.best_win_rates = {}  # For stages with multiple opponent evaluation
         self.evaluations = []
 
     def _on_step(self) -> bool:
-        if self.num_timesteps % self.eval_freq == 0:  # ✅ Use num_timesteps
+        if self.num_timesteps % self.eval_freq == 0:
             self._evaluate_and_maybe_advance()
 
         return True
 
     def _evaluate_and_maybe_advance(self):
-        if self.current_stage == 1:
-            opponent_types = ["random"]
-        elif self.current_stage == 2:
-            opponent_types = ["heuristic"]
-        else:  # stage 3
-            opponent_types = ["random", "heuristic"]
+        best_model_opponents = ["random", "heuristic"]
 
         if self.verbose > 0:
             print(f"\n{'=' * 60}")
             print(f"Evaluation at step {self.num_timesteps}")
             print(f"Current Stage: {self.current_stage}")
+            print(
+                "Best Model Selection: 200 episodes vs Random + 200 episodes vs Heuristic"
+            )
             print(f"{'=' * 60}")
 
         win_rates = {}
 
-        for opponent_type in opponent_types:
+        for opponent_type in best_model_opponents:
             win_rate = quick_eval(
                 model=self.model,
                 opponent_type=opponent_type,
-                n_episodes=self.n_eval_episodes,
+                n_episodes=self.config.n_eval_episodes // 2,
                 encoding_type=self.config.encoding_type,
                 use_dense_reward=self.config.use_dense_reward,
             )
@@ -67,106 +61,97 @@ class CurriculumCallback(BaseCallback):
             if self.verbose > 0:
                 print(f"Win Rate vs {opponent_type}: {win_rate * 100:.2f}%")
 
-        # For stage 3, track best win rates for both opponents separately
-        if self.current_stage == 3:
-            # Initialize best_win_rates if not already done
-            if not self.best_win_rates:
-                self.best_win_rates = {"random": 0.0, "heuristic": 0.0}
+        # Calculate average win rate for best model selection
+        avg_win_rate = sum(win_rates.values()) / len(win_rates)
 
-            # Track best win rates for each opponent
-            improved = False
-            for opponent_type in opponent_types:
-                if win_rates[opponent_type] > self.best_win_rates.get(
-                    opponent_type, 0.0
-                ):
-                    self.best_win_rates[opponent_type] = win_rates[opponent_type]
-                    improved = True
-                    if self.verbose > 0:
-                        print(
-                            f"New best win rate vs {opponent_type}: {win_rates[opponent_type] * 100:.2f}%"
-                        )
+        self.logger.record("eval/avg_win_rate", avg_win_rate)
 
-            # Log best win rates
-            self.logger.record(
-                "eval/best_win_rate_random", self.best_win_rates["random"]
+        if self.verbose > 0:
+            print(f"Average Win Rate: {avg_win_rate * 100:.2f}%")
+            print(f"Best Average Win Rate: {self.best_win_rate * 100:.2f}%")
+
+        # Save model if average win rate improved
+        if avg_win_rate > self.best_win_rate:
+            self.best_win_rate = avg_win_rate
+
+            model_name = self.config.get_model_name(
+                prefix="best", stage=self.current_stage
             )
-            self.logger.record(
-                "eval/best_win_rate_heuristic", self.best_win_rates["heuristic"]
-            )
-
-            # Use heuristic win rate for the main eval/win_rate metric (for compatibility)
-            win_rate = win_rates.get("heuristic", win_rates.get("random", 0.0))
-            self.logger.record("eval/win_rate", win_rate)
+            model_path = os.path.join(self.config.save_dir, model_name)
+            self.model.save(model_path)
 
             if self.verbose > 0:
-                print(
-                    f"Best Win Rate vs random: {self.best_win_rates['random'] * 100:.2f}%"
-                )
-                print(
-                    f"Best Win Rate vs heuristic: {self.best_win_rates['heuristic'] * 100:.2f}%"
-                )
+                print(f"🎉 New best model! Saved to {model_path}")
 
-            # Save model if either win rate improved
-            if improved:
-                model_name = self.config.get_model_name(
-                    prefix="best", stage=self.current_stage
-                )
-                model_path = os.path.join(self.config.save_dir, model_name)
+        # Now evaluate for stage advancement (stage-specific)
+        if self.verbose > 0:
+            print("\n--- Stage Advancement Evaluation ---")
 
-                self.model.save(model_path)
+        # Determine which opponent(s) to evaluate for stage transition
+        if self.current_stage == 0:
+            stage_eval_opponents = self.config.stage0_eval_opponent
+        elif self.current_stage == 1:
+            stage_eval_opponents = self.config.stage1_eval_opponent
+        elif self.current_stage == 2:
+            stage_eval_opponents = self.config.stage2_eval_opponents
+        elif self.current_stage == 3:
+            stage_eval_opponents = self.config.stage3_eval_opponents
+        else:  # stage 4
+            stage_eval_opponents = None  # No advancement from final stage
 
-                if self.verbose > 0:
-                    print(f"Saved new best model to {model_path}")
-        else:
-            # For stages 1 and 2, use single opponent's win rate
-            win_rate = win_rates[opponent_types[0]]
-            self.logger.record("eval/win_rate", win_rate)
+        win_rate_stage = None
 
-            if self.verbose > 0:
-                print(f"Best Win Rate: {self.best_win_rate * 100:.2f}%")
-
-            if win_rate > self.best_win_rate:
-                self.best_win_rate = win_rate
-
-                model_name = self.config.get_model_name(
-                    prefix="best", stage=self.current_stage
-                )
-                model_path = os.path.join(self.config.save_dir, model_name)
-
-                self.model.save(model_path)
-
-                if self.verbose > 0:
-                    print(f"Saved new best model to {model_path}")
-
-        self.logger.record("eval/stage", self.current_stage)
+        if stage_eval_opponents is not None and stage_eval_opponents in win_rates:
+            win_rate_stage = win_rates[stage_eval_opponents]
 
         # Store evaluation results
         eval_result = {
             "timestep": self.num_timesteps,
             "stage": self.current_stage,
             "win_rates": win_rates,
+            "avg_win_rate": avg_win_rate,
         }
+
         self.evaluations.append(eval_result)
 
-        if self.current_stage == 1 and win_rate >= self.stage1_threshold:
+        # Check for stage advancement
+        should_advance = False
+
+        if self.current_stage == 0 and win_rate_stage >= self.config.stage0_threshold:
             if self.verbose > 0:
                 print("\n" + "!" * 60)
-                print("Advancing to Stage 2: Training vs Heuristic")
+                print("Advancing to Stage 1: 80% Random, 10% Heuristic, 10% Milestone2")
                 print("!" * 60 + "\n")
 
-            self.current_stage = 2
-            self.stage_advanced = True
-            self.best_win_rate = 0.0  # Reset for new stage
+            should_advance = True
 
-        elif self.current_stage == 2 and win_rate >= self.stage2_threshold:
+        elif self.current_stage == 1 and win_rate_stage >= self.config.stage1_threshold:
             if self.verbose > 0:
                 print("\n" + "!" * 60)
-                print("Advancing to Stage 3: Self-Play Training")
+                print("Advancing to Stage 2: 60% Random, 20% Heuristic, 20% Milestone2")
                 print("!" * 60 + "\n")
 
-            self.current_stage = 3
+            should_advance = True
+
+        elif self.current_stage == 2 and win_rate_stage >= self.config.stage2_threshold:
+            if self.verbose > 0:
+                print("\n" + "!" * 60)
+                print("Advancing to Stage 3: 40% Random, 30% Heuristic, 30% Milestone2")
+                print("!" * 60 + "\n")
+
+            should_advance = True
+
+        elif self.current_stage == 3 and win_rate_stage >= self.config.stage3_threshold:
+            if self.verbose > 0:
+                print("\n" + "!" * 60)
+                print("Advancing to Stage 4: 20% Random, 40% Heuristic, 40% Milestone2")
+                print("!" * 60 + "\n")
+
+            should_advance = True
+
+        if should_advance:
+            self.current_stage += 1
             self.stage_advanced = True
-            self.best_win_rates = {}  # Reset for new stage (will be initialized on first eval)
 
         if self.verbose > 0:
             print("=" * 60 + "\n")
