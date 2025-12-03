@@ -6,6 +6,33 @@ echo "=============================================="
 echo "Running Policy Tests in Parallel"
 echo "=============================================="
 
+# Check if directory argument is provided
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <models_directory>"
+    echo "Example: $0 /path/to/models"
+    exit 1
+fi
+
+MODELS_DIR="$1"
+
+# Check if directory exists
+if [ ! -d "$MODELS_DIR" ]; then
+    echo "Error: Directory '$MODELS_DIR' does not exist"
+    exit 1
+fi
+
+# Find all .zip model files in the directory
+MODEL_PATHS=($(find "$MODELS_DIR" -maxdepth 1 -name "*.zip" -type f | sort))
+
+# Check if any models were found
+if [ ${#MODEL_PATHS[@]} -eq 0 ]; then
+    echo "Error: No .zip model files found in '$MODELS_DIR'"
+    exit 1
+fi
+
+echo "Found ${#MODEL_PATHS[@]} model(s) in $MODELS_DIR"
+echo ""
+
 # Check for available GPUs
 if command -v nvidia-smi &> /dev/null; then
     GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
@@ -22,19 +49,6 @@ mkdir -p "$TEST_LOG_DIR"
 echo "Running comprehensive policy tests across $GPU_COUNT GPU(s)..."
 echo "Log directory: $TEST_LOG_DIR"
 echo ""
-
-# Define all model paths
-MODEL_PATHS=(
-    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage1_handcrafted_dense_lr3e-04_ent0.005_batch2048_arch256.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage1_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch256.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage1_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch512.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage2_handcrafted_dense_lr3e-04_ent0.005_batch2048_arch256.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage2_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch256.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/best_stage2_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch512.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/latest_checkpoint_stage1_handcrafted_dense_lr3e-04_ent0.005_batch2048_arch256.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/latest_checkpoint_stage1_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch256.zip"
-    "/home/ubuntu/ahmed-etri/rl_project/models/latest_checkpoint_stage1_handcrafted_sparse_lr3e-04_ent0.005_batch2048_arch512.zip"
-)
 
 # Shared log file for all tests
 SHARED_LOG="$TEST_LOG_DIR/all_tests.log"

@@ -78,7 +78,7 @@ if __name__ == "__main__":
         print(f"\nTesting {model_name} vs {opponent_name}:")
 
         results = get_win_percentages(
-            2000,
+            10000,
             opponent_policy,
             Policy_Snakes(
                 encoding_type=args.encoding_type,
@@ -87,6 +87,6 @@ if __name__ == "__main__":
             ),
         )
 
-        print(f"  {model_name} win rate: {results[1]:.2f}%")
+        print(f"  {model_name} win rate vs {opponent_name}: {results[1]:.2f}%")
 
     print(f"\nCompleted testing for {model_name}")
