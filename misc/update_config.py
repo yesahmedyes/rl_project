@@ -33,6 +33,7 @@ def update_model_hyperparameters(model, config):
         and hasattr(config, "n_steps")
         and model.n_steps != config.n_steps
     )
+
     n_envs_changed = (
         hasattr(model, "env")
         and model.env is not None
@@ -61,12 +62,31 @@ def update_model_hyperparameters(model, config):
                 setattr(model, param_name, new_value)
                 print(f"  {param_name}: {old_value} -> {new_value}")
 
-    # Recreate rollout buffer if n_steps or n_envs changed
-    # Only recreate if env is set; otherwise it will be recreated when set_env is called
-    if (n_steps_changed or n_envs_changed) and model.env is not None:
-        print("  Recreating rollout buffer due to changed n_steps or n_envs...")
+    buffer_needs_recreation = False
 
-        # Get buffer parameters from existing buffer or model
+    if model.env is not None and hasattr(model, "rollout_buffer"):
+        expected_buffer_size = model.n_steps
+        current_buffer_size = model.rollout_buffer.buffer_size
+        expected_n_envs = model.env.num_envs
+        current_n_envs = model.rollout_buffer.n_envs
+
+        if (
+            current_buffer_size != expected_buffer_size
+            or current_n_envs != expected_n_envs
+        ):
+            buffer_needs_recreation = True
+
+            print("  Buffer size mismatch detected:")
+            print(f"    Current: {current_buffer_size} x {current_n_envs}")
+            print(f"    Expected: {expected_buffer_size} x {expected_n_envs}")
+
+    if (n_steps_changed or n_envs_changed) and model.env is not None:
+        buffer_needs_recreation = True
+
+    if buffer_needs_recreation:
+        print("  Recreating rollout buffer...")
+
+        # Get buffer parameters from model
         buffer_size = model.n_steps
         n_envs = model.env.num_envs
 
@@ -80,8 +100,7 @@ def update_model_hyperparameters(model, config):
             gamma=model.gamma,
             n_envs=n_envs,
         )
-        print(
-            f"  New buffer size: {buffer_size} steps x {n_envs} envs = {buffer_size * n_envs} total"
-        )
+
+        print(f"  New buffer size: {buffer_size} x {n_envs} = {buffer_size * n_envs}")
     elif n_steps_changed and model.env is None:
         print("  n_steps changed; buffer will be recreated when environment is set")
