@@ -37,7 +37,7 @@ class TrainingConfig:
     total_timesteps_stage1: int = 100_000_000
     total_timesteps_stage2: int = 100_000_000
     total_timesteps_stage3: int = 100_000_000
-    total_timesteps_stage4: int = 100_000_000
+    total_timesteps_stage4: int = 500_000_000
 
     # Opponent distributions: [random, heuristic, milestone2] ratios
     opponent_distribution_stage0: List[float] = field(
@@ -70,7 +70,7 @@ class TrainingConfig:
     stage3_eval_opponents: str = "heuristic"
 
     eval_freq: int = 500_000  # Evaluate every N timesteps
-    n_eval_episodes: int = 400
+    n_eval_episodes: int = 500
 
     # Self-play settings (only used if use_self_play=True)
     self_play_opponent_model_path: Optional[str] = None
