@@ -35,6 +35,7 @@ def update_model_hyperparameters(model, config):
     )
     n_envs_changed = (
         hasattr(model, "env")
+        and model.env is not None
         and hasattr(config, "n_envs")
         and model.env.num_envs != config.n_envs
     )
@@ -61,7 +62,8 @@ def update_model_hyperparameters(model, config):
                 print(f"  {param_name}: {old_value} -> {new_value}")
 
     # Recreate rollout buffer if n_steps or n_envs changed
-    if n_steps_changed or n_envs_changed:
+    # Only recreate if env is set; otherwise it will be recreated when set_env is called
+    if (n_steps_changed or n_envs_changed) and model.env is not None:
         print("  Recreating rollout buffer due to changed n_steps or n_envs...")
 
         # Get buffer parameters from existing buffer or model
@@ -81,3 +83,5 @@ def update_model_hyperparameters(model, config):
         print(
             f"  New buffer size: {buffer_size} steps x {n_envs} envs = {buffer_size * n_envs} total"
         )
+    elif n_steps_changed and model.env is None:
+        print("  n_steps changed; buffer will be recreated when environment is set")

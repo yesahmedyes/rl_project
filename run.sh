@@ -96,7 +96,7 @@ echo ""
 echo "=============================================="
 echo "Config 6.4: Sparse Reward - Longer Rollout"
 echo "=============================================="
-CUDA_VISIBLE_DEVICES=0 python -u train_ppo.py \
+CUDA_VISIBLE_DEVICES=4 python -u train_ppo.py \
     --encoding onehot \
     --resume /home/ubuntu/ahmed-etri/rl_project/models/v7/latest_stage0_onehot_sparse_lr2e-04_ent0.005_batch2048_arch1024.zip \
     --reload-configs \
@@ -117,7 +117,7 @@ echo ""
 echo "=============================================="
 echo "Config 6.5: Sparse Reward - Lower Entropy Coefficient"
 echo "=============================================="
-CUDA_VISIBLE_DEVICES=1 python -u train_ppo.py \
+CUDA_VISIBLE_DEVICES=5 python -u train_ppo.py \
     --encoding onehot \
     --resume /home/ubuntu/ahmed-etri/rl_project/models/v7/latest_stage0_onehot_sparse_lr2e-04_ent0.005_batch2048_arch1024.zip \
     --reload-configs \
