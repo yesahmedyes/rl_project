@@ -9,75 +9,11 @@ LAUNCH_LOG_DIR="./training_logs/$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LAUNCH_LOG_DIR"
 
 echo "=============================================="
-echo "Config 6.0: Dense Reward"
+echo "Config 6.0: Sparse Reward"
 echo "=============================================="
 CUDA_VISIBLE_DEVICES=0 python -u train_ppo.py \
     --encoding onehot \
-    --resume /home/ubuntu/ahmed-etri/rl_project/models/v7/latest_stage0_onehot_sparse_lr2e-04_ent0.005_batch2048_arch1024.zip \
-    --reload-configs \
-    --gpu 0 \
-    --dense-reward \
-    --net-arch 1024 1024 512 \
-    --n-envs 16 \
-    --n-steps 1024 \
-    --learning-rate 2e-4 \
-    --batch-size 2048 \
-    --n-epochs 3 \
-    --gamma 0.99 \
-    > "$LAUNCH_LOG_DIR/config6.0_onehot_dense.log" 2>&1 &
-PID6=$!
-echo "Started Config 6.0 (PID: $PID6)"
-echo "Log: $LAUNCH_LOG_DIR/config6.0_onehot_dense.log"
-echo ""
-
-echo "=============================================="
-echo "Config 6.1: Sparse Reward"
-echo "=============================================="
-CUDA_VISIBLE_DEVICES=1 python -u train_ppo.py \
-    --encoding onehot \
-    --resume /home/ubuntu/ahmed-etri/rl_project/models/v7/latest_stage0_onehot_sparse_lr2e-04_ent0.005_batch2048_arch1024.zip \
-    --reload-configs \
-    --gpu 0 \
-    --net-arch 1024 1024 512 \
-    --n-envs 16 \
-    --n-steps 1024 \
-    --learning-rate 2e-4 \
-    --batch-size 2048 \
-    --n-epochs 3 \
-    --gamma 0.99 \
-    > "$LAUNCH_LOG_DIR/config6.1_onehot_sparse.log" 2>&1 &
-PID61=$!
-echo "Started Config 6.1 (PID: $PID61)"
-echo "Log: $LAUNCH_LOG_DIR/config6.1_onehot_sparse.log"
-echo ""
-
-echo "=============================================="
-echo "Config 6.2: Sparse Reward - Higher Learning Rate"
-echo "=============================================="
-CUDA_VISIBLE_DEVICES=2 python -u train_ppo.py \
-    --encoding onehot \
-    --resume /home/ubuntu/ahmed-etri/rl_project/models/v7/latest_stage0_onehot_sparse_lr2e-04_ent0.005_batch2048_arch1024.zip \
-    --reload-configs \
-    --gpu 0 \
-    --net-arch 1024 1024 512 \
-    --n-envs 16 \
-    --n-steps 1024 \
-    --learning-rate 3e-4 \
-    --batch-size 2048 \
-    --n-epochs 3 \
-    --gamma 0.99 \
-    > "$LAUNCH_LOG_DIR/config6.2_onehot_sparse_lr_3e-4.log" 2>&1 &
-PID62=$!
-echo "Started Config 6.2 (PID: $PID62)"
-echo "Log: $LAUNCH_LOG_DIR/config6.2_onehot_sparse_lr_3e-4.log"
-echo ""
-
-echo "=============================================="
-echo "Config 6.3: Sparse Reward - Lower Learning Rate"
-echo "=============================================="
-CUDA_VISIBLE_DEVICES=3 python -u train_ppo.py \
-    --encoding onehot \
-    --resume /home/ubuntu/ahmed-etri/rl_project/models/v7/latest_stage0_onehot_sparse_lr2e-04_ent0.005_batch2048_arch1024.zip \
+    --resume /home/ubuntu/ahmed-etri/rl_project/models/v8/latest_checkpoint_stage0_onehot_sparse_lr1e-04_ent0.005_batch2048_arch1024.zip \
     --reload-configs \
     --gpu 0 \
     --net-arch 1024 1024 512 \
@@ -87,39 +23,18 @@ CUDA_VISIBLE_DEVICES=3 python -u train_ppo.py \
     --batch-size 2048 \
     --n-epochs 3 \
     --gamma 0.99 \
-    > "$LAUNCH_LOG_DIR/config6.3_onehot_sparse_lr_1e-4.log" 2>&1 &
-PID63=$!
-echo "Started Config 6.3 (PID: $PID63)"
-echo "Log: $LAUNCH_LOG_DIR/config6.3_onehot_sparse_lr_1e-4.log"
+    > "$LAUNCH_LOG_DIR/config6.0_onehot_sparse.log" 2>&1 &
+PID60=$!
+echo "Started Config 6.0 (PID: $PID60)"
+echo "Log: $LAUNCH_LOG_DIR/config6.0_onehot_sparse.log"
 echo ""
 
 echo "=============================================="
-echo "Config 6.4: Sparse Reward - Longer Rollout"
+echo "Config 6.1: Sparse Reward - Higher Learning Rate"
 echo "=============================================="
-CUDA_VISIBLE_DEVICES=4 python -u train_ppo.py \
+CUDA_VISIBLE_DEVICES=0 python -u train_ppo.py \
     --encoding onehot \
-    --resume /home/ubuntu/ahmed-etri/rl_project/models/v7/latest_stage0_onehot_sparse_lr2e-04_ent0.005_batch2048_arch1024.zip \
-    --reload-configs \
-    --gpu 0 \
-    --net-arch 1024 1024 512 \
-    --n-envs 16 \
-    --n-steps 2048 \
-    --learning-rate 2e-4 \
-    --batch-size 2048 \
-    --n-epochs 3 \
-    --gamma 0.99 \
-    > "$LAUNCH_LOG_DIR/config6.4_onehot_sparse_steps_2048.log" 2>&1 &
-PID64=$!
-echo "Started Config 6.4 (PID: $PID64)"
-echo "Log: $LAUNCH_LOG_DIR/config6.4_onehot_sparse_steps_2048.log"
-echo ""
-
-echo "=============================================="
-echo "Config 6.5: Sparse Reward - Lower Entropy Coefficient"
-echo "=============================================="
-CUDA_VISIBLE_DEVICES=5 python -u train_ppo.py \
-    --encoding onehot \
-    --resume /home/ubuntu/ahmed-etri/rl_project/models/v7/latest_stage0_onehot_sparse_lr2e-04_ent0.005_batch2048_arch1024.zip \
+    --resume /home/ubuntu/ahmed-etri/rl_project/models/v8/latest_checkpoint_stage0_onehot_sparse_lr1e-04_ent0.005_batch2048_arch1024.zip \
     --reload-configs \
     --gpu 0 \
     --net-arch 1024 1024 512 \
@@ -129,9 +44,96 @@ CUDA_VISIBLE_DEVICES=5 python -u train_ppo.py \
     --batch-size 2048 \
     --n-epochs 3 \
     --gamma 0.99 \
-    --ent-coef 0.002 \
-    > "$LAUNCH_LOG_DIR/config6.5_onehot_sparse_ent_0.002.log" 2>&1 &
+    > "$LAUNCH_LOG_DIR/config6.1_onehot_sparse_lr2e-04.log" 2>&1 &
+PID61=$!
+echo "Started Config 6.1 (PID: $PID61)"
+echo "Log: $LAUNCH_LOG_DIR/config6.1_onehot_sparse_lr2e-04.log"
+echo ""
+
+echo "=============================================="
+echo "Config 6.2: Sparse Reward - Higher Entropy Coefficient"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=1 python -u train_ppo.py \
+    --encoding onehot \
+    --resume /home/ubuntu/ahmed-etri/rl_project/models/v8/latest_checkpoint_stage0_onehot_sparse_lr1e-04_ent0.005_batch2048_arch1024.zip \
+    --reload-configs \
+    --gpu 0 \
+    --net-arch 1024 1024 512 \
+    --n-envs 16 \
+    --n-steps 1024 \
+    --learning-rate 1e-4 \
+    --batch-size 2048 \
+    --n-epochs 3 \
+    --gamma 0.99 \
+    --ent-coef 0.01 \
+    > "$LAUNCH_LOG_DIR/config6.2_onehot_sparse_ent0.01.log" 2>&1 &
+PID62=$!
+echo "Started Config 6.2 (PID: $PID62)"
+echo "Log: $LAUNCH_LOG_DIR/config6.2_onehot_sparse_ent0.01.log"
+echo ""
+
+echo "=============================================="
+echo "Config 6.3: Sparse Reward - Lower Entropy Coefficient"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=2 python -u train_ppo.py \
+    --encoding onehot \
+    --resume /home/ubuntu/ahmed-etri/rl_project/models/v8/latest_checkpoint_stage0_onehot_sparse_lr1e-04_ent0.005_batch2048_arch1024.zip \
+    --reload-configs \
+    --gpu 1 \
+    --net-arch 1024 1024 512 \
+    --n-envs 16 \
+    --n-steps 1024 \
+    --learning-rate 1e-4 \
+    --batch-size 2048 \
+    --n-epochs 3 \
+    --gamma 0.99 \
+    --ent-coef 0.001 \
+    > "$LAUNCH_LOG_DIR/config6.3_onehot_sparse_ent0.001.log" 2>&1 &
+PID63=$!
+echo "Started Config 6.3 (PID: $PID63)"
+echo "Log: $LAUNCH_LOG_DIR/config6.3_onehot_sparse_ent0.001.log"
+echo ""
+
+echo "=============================================="
+echo "Config 6.4: Sparse Reward - More Steps"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=2 python -u train_ppo.py \
+    --encoding onehot \
+    --resume /home/ubuntu/ahmed-etri/rl_project/models/v8/latest_checkpoint_stage0_onehot_sparse_lr1e-04_ent0.005_batch2048_arch1024.zip \
+    --reload-configs \
+    --gpu 1 \
+    --net-arch 1024 1024 512 \
+    --n-envs 16 \
+    --n-steps 2048 \
+    --learning-rate 1e-4 \
+    --batch-size 2048 \
+    --n-epochs 3 \
+    --gamma 0.99 \
+    --ent-coef 0.001 \
+    > "$LAUNCH_LOG_DIR/config6.4_onehot_sparse_nsteps2048.log" 2>&1 &
+PID64=$!
+echo "Started Config 6.4 (PID: $PID64)"
+echo "Log: $LAUNCH_LOG_DIR/config6.4_onehot_sparse_nsteps2048.log"
+echo ""
+
+echo "=============================================="
+echo "Config 6.5: Sparse Reward - Lower Gamma"
+echo "=============================================="
+CUDA_VISIBLE_DEVICES=2 python -u train_ppo.py \
+    --encoding onehot \
+    --resume /home/ubuntu/ahmed-etri/rl_project/models/v8/latest_checkpoint_stage0_onehot_sparse_lr1e-04_ent0.005_batch2048_arch1024.zip \
+    --reload-configs \
+    --gpu 1 \
+    --net-arch 1024 1024 512 \
+    --n-envs 16 \
+    --n-steps 2048 \
+    --learning-rate 1e-4 \
+    --batch-size 2048 \
+    --n-epochs 3 \
+    --gamma 0.95 \
+    --ent-coef 0.001 \
+    > "$LAUNCH_LOG_DIR/config6.5_onehot_sparse_gamma0.95.log" 2>&1 &
 PID65=$!
 echo "Started Config 6.5 (PID: $PID65)"
-echo "Log: $LAUNCH_LOG_DIR/config6.5_onehot_sparse_ent_0.002.log"
+echo "Log: $LAUNCH_LOG_DIR/config6.5_onehot_sparse_gamma0.95.log"
 echo ""

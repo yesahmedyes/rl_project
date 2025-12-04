@@ -123,5 +123,7 @@ class TrainingConfig:
         parts.append(f"ent{self.ent_coef}")
         parts.append(f"batch{self.batch_size}")
         parts.append(f"arch{self.net_arch[0]}")
+        parts.append(f"nsteps{self.n_steps}")
+        parts.append(f"gamma{self.gamma}")
 
         return "_".join(parts) + ".zip"
