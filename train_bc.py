@@ -81,7 +81,7 @@ def train_bc(
     # Set training parameters
     config.training(
         lr=1e-4,
-        train_batch_size_per_learner=512,
+        train_batch_size_per_learner=64,  # Reduced from 512 to work with smaller datasets
         # BC uses standard supervised learning
     )
 
@@ -97,11 +97,6 @@ def train_bc(
     # which we skip here for simplicity
     config.evaluation(
         evaluation_interval=None,  # Disable online evaluation
-    )
-
-    # Set reporting
-    config.reporting(
-        min_sample_timesteps_per_iteration=1000,
     )
 
     print("\nBC Configuration:")
