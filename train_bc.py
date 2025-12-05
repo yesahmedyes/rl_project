@@ -123,6 +123,16 @@ def train_bc(
         action_space=action_space,
     )
 
+    # Set resources - important for offline learning
+    config = config.resources(
+        num_learners=1,
+    )
+
+    # Disable env runners since we're doing pure offline learning
+    config = config.env_runners(
+        num_env_runners=0,  # No environment interaction for offline RL
+    )
+
     # Set training parameters
     config = config.training(
         lr=lr,
@@ -147,6 +157,8 @@ def train_bc(
             "lines": True,
         },  # Line-delimited JSON with records orientation
         dataset_num_iters_per_learner=1,
+        materialize_data=True,  # Ensure data is materialized before training
+        materialize_mapped_data=True,  # Materialize after preprocessing
     )
 
     # Set evaluation (disabled for offline training)
