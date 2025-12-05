@@ -97,7 +97,6 @@ def train_bc(
     # which we skip here for simplicity
     config.evaluation(
         evaluation_interval=None,  # Disable online evaluation
-        evaluation_duration=0,
     )
 
     # Set reporting
@@ -226,7 +225,6 @@ def train_bc_with_tune(
 
     config.evaluation(
         evaluation_interval=None,
-        evaluation_duration=0,
     )
 
     print("Starting hyperparameter tuning with Ray Tune...")
