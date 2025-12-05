@@ -69,7 +69,6 @@ class Policy_BC:
                 action_space=action_space,
             )
 
-            # Minimal training settings (not used in inference but required)
             config.training(
                 lr=1e-4,
                 train_batch_size_per_learner=64,

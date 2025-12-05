@@ -46,7 +46,6 @@ def train_bc(
     if not data_path.exists():
         raise ValueError(f"Data directory does not exist: {data_path}")
 
-    # Collect individual JSON episode files (RLlib needs file paths, not just a directory)
     json_files = [
         str(p.resolve())
         for p in data_path.glob("*.json")
@@ -59,7 +58,6 @@ def train_bc(
     print(f"Training BC on data from: {data_path}")
     print(f"Encoding type: {encoding_type}")
 
-    # Define observation and action spaces based on encoding type
     if encoding_type == "handcrafted":
         observation_space = gym.spaces.Box(
             low=-np.inf,
@@ -80,8 +78,6 @@ def train_bc(
 
     config = BCConfig()
 
-    # Use the old API stack (pre-RLModule/new env runner) for compatibility with the
-    # JSON offline dataset format produced by JsonWriter.
     config.api_stack(
         enable_rl_module_and_learner=False,
         enable_env_runner_and_connector_v2=False,
@@ -96,12 +92,9 @@ def train_bc(
     # Set training parameters
     config.training(
         lr=1e-4,
-        train_batch_size_per_learner=64,  # Reduced from 512 to work with smaller datasets
-        # BC uses standard supervised learning
+        train_batch_size_per_learner=64,
     )
 
-    # Configure offline data
-    # For the old API stack, pass JSON episode files directly so JsonReader loads them.
     config.offline_data(
         input_=json_files,
         dataset_num_iters_per_learner=1,
@@ -111,7 +104,6 @@ def train_bc(
         evaluation_interval=None,
     )
 
-    # Count and print dataset size
     num_samples, num_episodes = count_dataset_samples(data_path)
 
     print("\nDataset Statistics:")

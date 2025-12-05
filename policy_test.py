@@ -7,13 +7,13 @@ import argparse
 import os
 
 
-def get_win_percentages(n, policy1, policy2):
+def get_win_percentages(num_games, policy1, policy2):
     env = Ludo()
     wins = [0, 0]
     policies = [policy1, policy2]
 
     for i in range(2):
-        for _ in range(n // 2):
+        for _ in range(num_games // 2):
             state = env.reset()
             terminated = False
             player_turn = 0
@@ -29,7 +29,7 @@ def get_win_percentages(n, policy1, policy2):
 
         policies[0], policies[1] = policies[1], policies[0]
 
-    win_percentages = [(win / n) * 100 for win in wins]
+    win_percentages = [(win / num_games) * 100 for win in wins]
 
     return win_percentages
 
@@ -53,6 +53,12 @@ if __name__ == "__main__":
         default="handcrafted",
         choices=["onehot", "handcrafted"],
         help="Encoding type used by the model",
+    )
+    parser.add_argument(
+        "--num_games",
+        type=int,
+        default=1000,
+        help="Number of self-play games per matchup (split between seats)",
     )
 
     args = parser.parse_args()
@@ -85,7 +91,7 @@ if __name__ == "__main__":
         print(f"\nTesting {model_name} vs {opponent_name}:")
 
         results = get_win_percentages(
-            10000,
+            args.num_games,
             opponent_policy,
             test_policy,
         )
