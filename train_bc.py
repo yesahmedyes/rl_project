@@ -123,8 +123,8 @@ def train_bc(
         action_space=action_space,
     )
 
-    # Set resources - important for offline learning
-    config = config.resources(
+    # Configure learners for offline learning
+    config = config.learners(
         num_learners=1,
     )
 
