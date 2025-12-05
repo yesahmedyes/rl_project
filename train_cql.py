@@ -102,10 +102,22 @@ def train_cql(
     )
 
     # Set offline data source
+    # Only read transition files (not dataset_info.json)
+    data_path = Path(data_dir)
+    transition_files = [str(f) for f in sorted(data_path.glob("transitions_*.json"))]
+
+    if not transition_files:
+        raise ValueError(f"No transition files found in {data_dir}")
+
+    print(f"Found {len(transition_files)} transition files: {transition_files}")
+
     config = config.offline_data(
-        input_=[Path(data_dir).as_posix()],
+        input_=transition_files,
         input_read_method="read_json",  # Read JSONL files
-        input_read_method_kwargs={"lines": True},  # Line-delimited JSON
+        input_read_method_kwargs={
+            "orient": "records",
+            "lines": True,
+        },  # Line-delimited JSON with records orientation
         dataset_num_iters_per_learner=1,
     )
 
