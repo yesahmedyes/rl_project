@@ -50,7 +50,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--encoding_type",
         type=str,
-        default="onehot",
+        default="handcrafted",
         choices=["onehot", "handcrafted"],
         help="Encoding type used by the model",
     )

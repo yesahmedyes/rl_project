@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import ray
+import gymnasium as gym
 from pathlib import Path
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.bc import BCConfig
@@ -37,8 +38,8 @@ class Policy_BC:
         ckpt_dir = ckpt if ckpt.is_dir() else ckpt.parent
 
         try:
-            # Try the modern loader first
-            self.algo = Algorithm.from_checkpoint(str(ckpt))
+            # Try the modern loader first (use the directory if a file path is given)
+            self.algo = Algorithm.from_checkpoint(str(ckpt_dir))
         except ValueError:
             # Build a compatible BC config (mirrors train_bc.py)
             config = BCConfig()
@@ -48,18 +49,27 @@ class Policy_BC:
             )
 
             if self.encoding_type == "handcrafted":
-                obs_space_shape = (70,)
+                observation_space = gym.spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=(70,),
+                    dtype=np.float32,
+                )
             elif self.encoding_type == "onehot":
-                obs_space_shape = (946,)
+                observation_space = gym.spaces.Box(
+                    low=0.0,
+                    high=1.0,
+                    shape=(946,),
+                    dtype=np.float32,
+                )
             else:
                 raise ValueError(f"Unknown encoding type: {self.encoding_type}")
 
+            action_space = gym.spaces.Discrete(12)
+
             config.environment(
-                observation_space=(
-                    "Box",
-                    {"shape": obs_space_shape, "low": -np.inf, "high": np.inf},
-                ),
-                action_space=("Discrete", {"n": 12}),
+                observation_space=observation_space,
+                action_space=action_space,
             )
 
             # Minimal training settings (not used in inference but required)
