@@ -107,6 +107,7 @@ def collect_dataset(
     encoding_type="handcrafted",
     opponent_type="heuristic",
     expert_type="heuristic",
+    reward_type="dense",
     output_dir="offline_data",
     max_steps_per_episode=1000,
 ):
@@ -119,7 +120,7 @@ def collect_dataset(
         encoding_type=encoding_type,
         opponent_type=opponent_type,
         agent_player=None,  # Randomize which player the agent controls
-        use_dense_reward=True,
+        use_dense_reward=reward_type == "dense",
     )
 
     # Create expert policy
@@ -179,6 +180,7 @@ def collect_dataset(
                 "encoding_type": encoding_type,
                 "opponent_type": opponent_type,
                 "expert_type": expert_type,
+                "reward_type": reward_type,
                 "avg_return": avg_return,
                 "avg_episode_length": avg_steps,
                 "win_rate": win_rate,
@@ -223,6 +225,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--reward_type",
+        type=str,
+        default="dense",
+        choices=["dense", "sparse"],
+        help="Reward type used during data collection",
+    )
+
+    parser.add_argument(
         "--output_dir",
         type=str,
         default="offline_data",
@@ -240,6 +250,7 @@ if __name__ == "__main__":
         encoding_type=args.encoding_type,
         opponent_type=args.opponent_type,
         expert_type=args.expert_type,
+        reward_type=args.reward_type,
         output_dir=args.output_dir,
         max_steps_per_episode=args.max_steps,
     )

@@ -7,6 +7,29 @@ import ray
 import json
 
 
+def checkpoint_to_path(ckpt_obj):
+    """Return a filesystem path string for a Ray checkpoint-like object."""
+    if isinstance(ckpt_obj, str):
+        return ckpt_obj
+
+    # Handle TrainingResult(checkpoint=...) wrapper
+    inner_ckpt = getattr(ckpt_obj, "checkpoint", None)
+    if inner_ckpt is not None:
+        ckpt_obj = inner_ckpt
+
+    path_attr = getattr(ckpt_obj, "path", None)
+    if path_attr:
+        return str(path_attr)
+
+    if hasattr(ckpt_obj, "to_directory"):
+        try:
+            return ckpt_obj.to_directory()
+        except Exception:
+            pass
+
+    return str(ckpt_obj)
+
+
 def count_dataset_samples(data_dir):
     data_path = Path(data_dir)
     total_samples = 0
@@ -153,20 +176,22 @@ def train_bc(
 
         # Save checkpoint
         if (iteration + 1) % checkpoint_freq == 0:
-            checkpoint_dir = algo.save(checkpoint_dir=output_dir)
-            print(f"  Checkpoint saved to: {checkpoint_dir}")
+            checkpoint_obj = algo.save(checkpoint_dir=output_dir)
+            checkpoint_path = checkpoint_to_path(checkpoint_obj)
+            print(f"  Checkpoint saved to: {checkpoint_path}")
 
     # Save final checkpoint
-    final_checkpoint = algo.save(checkpoint_dir=output_dir)
+    final_checkpoint_obj = algo.save(checkpoint_dir=output_dir)
+    final_checkpoint_path = checkpoint_to_path(final_checkpoint_obj)
     print("\nTraining complete!")
-    print(f"Final checkpoint saved to: {final_checkpoint}")
+    print(f"Final checkpoint saved to: {final_checkpoint_path}")
     print(f"Best loss achieved: {best_loss:.6f}")
 
     # Cleanup
     algo.stop()
     ray.shutdown()
 
-    return final_checkpoint
+    return final_checkpoint_path
 
 
 if __name__ == "__main__":

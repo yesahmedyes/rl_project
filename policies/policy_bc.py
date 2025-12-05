@@ -3,6 +3,7 @@ import torch
 import ray
 import gymnasium as gym
 from pathlib import Path
+import re
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.bc import BCConfig
 from misc.state_encoding import encode_handcrafted_state, encode_onehot_state
@@ -19,7 +20,7 @@ class Policy_BC:
         self.max_actions = 12
         self.device = torch.device("cpu" if device == "auto" else device)
 
-        ckpt = Path(checkpoint_path)
+        ckpt = self._normalize_checkpoint_path(checkpoint_path)
 
         if not ckpt.exists():
             raise FileNotFoundError(
@@ -108,6 +109,47 @@ class Policy_BC:
         if hasattr(self.policy, "model") and hasattr(self.policy.model, "to"):
             self.policy.model.to(self.device)
             self.policy.model.eval()
+
+    @staticmethod
+    def _find_latest_checkpoint(base_dir: Path):
+        if not base_dir.exists() or not base_dir.is_dir():
+            return None
+
+        candidates = sorted(
+            base_dir.glob("checkpoint*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+
+        return candidates[0] if candidates else None
+
+    @staticmethod
+    def _normalize_checkpoint_path(path_str: str) -> Path:
+        """Handle raw paths and Ray result reprs like TrainingResult(checkpoint=...)."""
+        ckpt = Path(path_str)
+
+        if ckpt.exists():
+            return ckpt
+
+        # Try to extract path=... from Ray repr strings
+        match = re.search(r"path=([^,\\s)]+)", path_str)
+        if match:
+            candidate = Path(match.group(1))
+
+            if candidate.exists():
+                return candidate
+
+            latest = Policy_BC._find_latest_checkpoint(candidate)
+            if latest:
+                return latest
+
+        # If given a directory, try to pick the newest checkpoint inside
+        if ckpt.is_dir():
+            latest = Policy_BC._find_latest_checkpoint(ckpt)
+            if latest:
+                return latest
+
+        return ckpt
 
     def _encode_state(self, state):
         if self.encoding_type == "handcrafted":

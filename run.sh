@@ -8,23 +8,26 @@ echo "=============================================="
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
-# Quick knobs (override via env vars)
-ENCODING_TYPE="${ENCODING_TYPE:-handcrafted}"
-NUM_EPISODES="${NUM_EPISODES:-400}"   # episodes per opponent
-MAX_STEPS="${MAX_STEPS:-500}"
-NUM_ITERS="${NUM_ITERS:-120}"
-CHECKPOINT_FREQ="${CHECKPOINT_FREQ:-10}"
-NUM_GAMES="${NUM_GAMES:-500}"         # eval games per opponent
-DEVICE="${DEVICE:-cpu}"
+ENCODING_TYPE="handcrafted"
+NUM_EPISODES=5000
+MAX_STEPS=500
+NUM_ITERS=1000
+CHECKPOINT_FREQ=100
+NUM_GAMES=200      # eval games per opponent
+DEVICE="cuda:1"
+REWARD_TYPE="sparse"
 
-DATA_ROOT="${DATA_ROOT:-$PROJECT_ROOT/offline_data}"
-COMBINED_DIR="${COMBINED_DIR:-$DATA_ROOT/combined_${ENCODING_TYPE}}"
-RESULTS_DIR="${RESULTS_DIR:-$PROJECT_ROOT/bc_results}"
-RUN_TAG="${RUN_TAG:-$(date +%Y%m%d_%H%M%S)}"
-LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs/$RUN_TAG}"
+DATA_ROOT="$PROJECT_ROOT/offline_data"
+COMBINED_DIR="$DATA_ROOT/combined_${ENCODING_TYPE}"
+RESULTS_DIR="$PROJECT_ROOT/bc_results"
+RUN_TAG="$(date +%Y%m%d_%H%M%S)"
+LOG_DIR="$PROJECT_ROOT/logs/$RUN_TAG"
+MAIN_LOG="$LOG_DIR/run.log"
 
 mkdir -p "$COMBINED_DIR" "$RESULTS_DIR" "$LOG_DIR"
 find "$COMBINED_DIR" -name '*.json' -delete
+
+exec >"$MAIN_LOG" 2>&1
 
 echo "Encoding: $ENCODING_TYPE"
 echo "Episodes per opponent: $NUM_EPISODES"
@@ -33,6 +36,7 @@ echo "Logs: $LOG_DIR"
 echo ""
 
 OPPONENTS=(random heuristic milestone2)
+
 for OPP in "${OPPONENTS[@]}"; do
   OUT_DIR="$DATA_ROOT/heuristic_vs_${OPP}"
   LOG_FILE="$LOG_DIR/collect_${OPP}.log"
@@ -43,8 +47,9 @@ for OPP in "${OPPONENTS[@]}"; do
     --encoding_type "$ENCODING_TYPE" \
     --opponent_type "$OPP" \
     --expert_type "heuristic" \
+    --reward_type "$REWARD_TYPE" \
     --output_dir "$OUT_DIR" \
-    --max_steps "$MAX_STEPS" | tee "$LOG_FILE"
+    --max_steps "$MAX_STEPS" >"$LOG_FILE" 2>&1
 
   find "$OUT_DIR" -name '*.json' ! -name 'dataset_info.json' -exec cp {} "$COMBINED_DIR" \;
 done
@@ -56,7 +61,7 @@ python3 "$PROJECT_ROOT/train_bc.py" \
   --encoding_type "$ENCODING_TYPE" \
   --num_iterations "$NUM_ITERS" \
   --checkpoint_freq "$CHECKPOINT_FREQ" \
-  --output_dir "$RESULTS_DIR" | tee "$TRAIN_LOG"
+  --output_dir "$RESULTS_DIR" >"$TRAIN_LOG" 2>&1
 
 CKPT_PATH="$(grep -oE 'Final checkpoint saved to:.*' "$TRAIN_LOG" | awk -F': ' '{print $2}' | tail -1)"
 if [[ -z "$CKPT_PATH" ]]; then
@@ -70,7 +75,7 @@ python3 "$PROJECT_ROOT/policy_test.py" \
   --model_path "$CKPT_PATH" \
   --device "$DEVICE" \
   --encoding_type "$ENCODING_TYPE" \
-  --num_games "$NUM_GAMES" | tee "$EVAL_LOG"
+  --num_games "$NUM_GAMES" >"$EVAL_LOG" 2>&1
 
 echo "=== Done ==="
 echo "Checkpoint: $CKPT_PATH"
