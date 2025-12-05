@@ -92,11 +92,6 @@ def train_bc(
         dataset_num_iters_per_learner=1,
     )
 
-    # Set resources
-    config.resources(
-        num_gpus_per_learner=0,  # Set to 1 if you have GPU
-    )
-
     # Configure evaluation (optional - only if you want to evaluate during training)
     # Note: For offline RL, evaluation requires setting up an actual environment
     # which we skip here for simplicity
@@ -227,10 +222,6 @@ def train_bc_with_tune(
     config.offline_data(
         input_=[data_path.as_posix()],
         dataset_num_iters_per_learner=1,
-    )
-
-    config.resources(
-        num_gpus_per_learner=0,
     )
 
     config.evaluation(
