@@ -86,6 +86,9 @@ def train_marwil(
         enable_env_runner_and_connector_v2=True,
     )
 
+    # Set framework (required for new API stack)
+    config = config.framework("torch")
+
     # Set environment
     config = config.environment(
         observation_space=observation_space,

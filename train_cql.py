@@ -85,6 +85,9 @@ def train_cql(
         enable_env_runner_and_connector_v2=True,
     )
 
+    # Set framework (required for new API stack)
+    config = config.framework("torch")
+
     # Set environment
     config = config.environment(
         observation_space=observation_space,
@@ -149,7 +152,7 @@ def train_cql(
 
     # Create trainer
     print("\nBuilding CQL trainer...")
-    trainer = config.build_algo()
+    trainer = config.build()
 
     # Training loop
     print("\nStarting training...")
