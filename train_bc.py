@@ -154,8 +154,8 @@ def train_bc(
     print(f"Found {len(transition_files)} transition files: {transition_files}")
 
     # Load offline data using Ray Data
-    # Read JSONL files
-    dataset = ray.data.read_json(transition_files, lines=True)
+    # Read JSONL files and prepare for RLlib
+    dataset = ray.data.read_json(transition_files)
 
     config = config.offline_data(
         input_=dataset,
