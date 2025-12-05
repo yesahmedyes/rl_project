@@ -78,18 +78,21 @@ def collect_episode(env, policy, episode_id, max_steps=1000):
         step_count += 1
 
     # Create episode data in RLlib JsonWriter format
+    timesteps = list(range(len(actions)))
+
+    # RLlib's JsonReader expects per-timestep arrays (not scalars) for episodic
+    # metadata; keep lengths aligned with actions to avoid zero-dim arrays.
     episode_data = {
-        "type": "SampleBatch",
         "obs": observations[:-1],  # All observations except the last
         "new_obs": observations[1:],  # All observations except the first
         "actions": actions,
         "rewards": rewards,
         "dones": dones,
         "infos": infos[1:],  # Match with actions (exclude first info)
-        "eps_id": episode_id,
-        "agent_index": 0,
-        "unroll_id": episode_id,
-        "t": list(range(len(actions))),  # Timestep indices
+        "eps_id": [episode_id] * len(actions),
+        "agent_index": [0] * len(actions),
+        "unroll_id": [episode_id] * len(actions),
+        "t": timesteps,  # Timestep indices
     }
 
     episode_stats = {

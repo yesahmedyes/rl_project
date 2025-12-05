@@ -101,9 +101,9 @@ def train_bc(
     )
 
     # Configure offline data
+    # For the old API stack, pass JSON episode files directly so JsonReader loads them.
     config.offline_data(
-        input_="json_reader",
-        input_config={"paths": json_files},
+        input_=json_files,
         dataset_num_iters_per_learner=1,
     )
 
