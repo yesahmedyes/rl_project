@@ -48,7 +48,9 @@ def train_bc(
 
     # Collect individual JSON episode files (RLlib needs file paths, not just a directory)
     json_files = [
-        p.as_posix() for p in data_path.glob("*.json") if p.name != "dataset_info.json"
+        str(p.resolve())
+        for p in data_path.glob("*.json")
+        if p.name != "dataset_info.json"
     ]
 
     if not json_files:
@@ -78,9 +80,11 @@ def train_bc(
 
     config = BCConfig()
 
+    # Use the old API stack (pre-RLModule/new env runner) for compatibility with the
+    # JSON offline dataset format produced by JsonWriter.
     config.api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
     )
 
     # Define the environment spaces
@@ -98,7 +102,8 @@ def train_bc(
 
     # Configure offline data
     config.offline_data(
-        input_=json_files,  # Explicitly pass JSON files so RLlib doesn't default to Parquet
+        input_="json_reader",
+        input_config={"paths": json_files},
         dataset_num_iters_per_learner=1,
     )
 
