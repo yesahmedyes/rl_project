@@ -5,6 +5,7 @@ When beta=0, it reduces to pure BC. Higher beta values incorporate policy gradie
 """
 
 import ray
+import ray.data
 import gymnasium as gym
 import numpy as np
 import argparse
@@ -127,16 +128,13 @@ def train_marwil(
 
     print(f"Found {len(transition_files)} transition files: {transition_files}")
 
+    # Load offline data using Ray Data
+    # Read JSONL files
+    dataset = ray.data.read_json(transition_files, lines=True)
+
     config = config.offline_data(
-        input_=transition_files,
-        input_read_method="read_json",  # Read JSONL files
-        input_read_method_kwargs={
-            "orient": "records",
-            "lines": True,
-        },  # Line-delimited JSON with records orientation
+        input_=dataset,
         dataset_num_iters_per_learner=1,
-        materialize_data=True,  # Ensure data is materialized before training
-        materialize_mapped_data=True,  # Materialize after preprocessing
     )
 
     # Set evaluation (disabled for offline training)
@@ -156,7 +154,7 @@ def train_marwil(
 
     # Create trainer
     print("\nBuilding MARWIL trainer...")
-    trainer = config.build_algo()
+    trainer = config.build()
 
     # Training loop
     print("\nStarting training...")
