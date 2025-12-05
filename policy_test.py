@@ -1,7 +1,7 @@
 from policies.policy_random import Policy_Random
 from policies.policy_heuristic import Policy_Heuristic
 from policies.milestone2 import Policy_Milestone2
-from policies.policy_snakes import Policy_Snakes
+from policies.policy_bc import Policy_BC
 from env.ludo import Ludo
 import argparse
 import os
@@ -36,13 +36,13 @@ def get_win_percentages(n, policy1, policy2):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Test a single snake policy against opponents"
+        description="Evaluate a trained policy against baseline opponents"
     )
     parser.add_argument(
         "--model_path",
         type=str,
         required=True,
-        help="Path to the snake model checkpoint",
+        help="Path to the trained model checkpoint (BC/RLlib)",
     )
     parser.add_argument(
         "--device", type=str, default="cuda:0", help="Device to run the model on"
@@ -74,17 +74,20 @@ if __name__ == "__main__":
     print(f"Encoding type: {args.encoding_type}")
     print("=" * 50)
 
+    # Build the policy under test once to avoid reloading per matchup
+    test_policy = Policy_BC(
+        checkpoint_path=args.model_path,
+        encoding_type=args.encoding_type,
+        device=args.device,
+    )
+
     for opponent_name, opponent_policy in opponents:
         print(f"\nTesting {model_name} vs {opponent_name}:")
 
         results = get_win_percentages(
             10000,
             opponent_policy,
-            Policy_Snakes(
-                encoding_type=args.encoding_type,
-                checkpoint_path=args.model_path,
-                device=args.device,
-            ),
+            test_policy,
         )
 
         print(f"  {model_name} win rate vs {opponent_name}: {results[1]:.2f}%")
