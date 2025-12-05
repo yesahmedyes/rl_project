@@ -18,18 +18,18 @@ from env.ludo_gym_env import LudoGymEnv
 
 def train_cql(
     data_dir,
-    encoding_type='handcrafted',
+    encoding_type="handcrafted",
     num_iterations=100,
     lr=3e-4,
     train_batch_size=256,
     bc_iters=20000,
     temperature=1.0,
-    output_dir='checkpoints/cql',
-    experiment_name=None
+    output_dir="checkpoints/cql",
+    experiment_name=None,
 ):
     """
     Train a CQL policy on offline data.
-    
+
     Args:
         data_dir: Directory containing offline data
         encoding_type: State encoding type
@@ -44,12 +44,12 @@ def train_cql(
     # Initialize Ray
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
-    
+
     # Load dataset info
     info_file = Path(data_dir) / "dataset_info.json"
-    with open(info_file, 'r') as f:
+    with open(info_file, "r") as f:
         dataset_info = json.load(f)
-    
+
     print("=" * 50)
     print("Training Conservative Q-Learning (CQL)")
     print("=" * 50)
@@ -62,35 +62,35 @@ def train_cql(
     print(f"Temperature: {temperature}")
     print(f"Number of iterations: {num_iterations}")
     print("=" * 50)
-    
+
     # Define observation and action spaces
-    if encoding_type == 'handcrafted':
+    if encoding_type == "handcrafted":
         state_dim = 70
-    elif encoding_type == 'onehot':
+    elif encoding_type == "onehot":
         state_dim = 946
     else:
         raise ValueError(f"Unknown encoding_type: {encoding_type}")
-    
+
     observation_space = spaces.Box(
         low=0.0, high=1.0, shape=(state_dim,), dtype=np.float32
     )
     action_space = spaces.Discrete(12)
-    
+
     # Create CQL config
     config = CQLConfig()
-    
+
     # Enable new API stack
     config = config.api_stack(
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    
+
     # Set environment
     config = config.environment(
         observation_space=observation_space,
         action_space=action_space,
     )
-    
+
     # Set training parameters
     config = config.training(
         lr=lr,
@@ -100,11 +100,12 @@ def train_cql(
         temperature=temperature,  # CQL temperature
         min_q_weight=5.0,  # Weight for conservative regularization
     )
-    
+
     # Set offline data source
     config = config.offline_data(
         input_=[Path(data_dir).as_posix()],
-        input_read_method="read_json",
+        input_read_method="read_json",  # Read JSONL files
+        input_read_method_kwargs={"lines": True},  # Line-delimited JSON
         dataset_num_iters_per_learner=1,
     )
 
@@ -112,51 +113,53 @@ def train_cql(
     config = config.evaluation(
         evaluation_interval=None,  # Disable evaluation during training
     )
-    
+
     # Create output directory
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Set experiment name
     if experiment_name is None:
-        expert_type = dataset_info.get('expert_type', 'unknown')
+        expert_type = dataset_info.get("expert_type", "unknown")
         experiment_name = f"CQL_{expert_type}_{encoding_type}"
-    
+
     # Create trainer
     print("\nBuilding CQL trainer...")
     trainer = config.build()
-    
+
     # Training loop
     print("\nStarting training...")
-    best_reward = -float('inf')
-    
+    best_reward = -float("inf")
+
     for iteration in range(num_iterations):
         result = trainer.train()
-        
+
         # Print progress
         print(f"\nIteration {iteration + 1}/{num_iterations}")
-        learner_info = result.get('info', {}).get('learner', {}).get('default_policy', {})
+        learner_info = (
+            result.get("info", {}).get("learner", {}).get("default_policy", {})
+        )
         print(f"  TD Loss: {learner_info.get('td_error', 'N/A')}")
         print(f"  CQL Loss: {learner_info.get('cql_loss', 'N/A')}")
         print(f"  Mean Q: {learner_info.get('mean_q', 'N/A')}")
-        
+
         # Save checkpoint periodically
         if (iteration + 1) % 10 == 0:
             checkpoint_dir = output_path / experiment_name / f"iter_{iteration + 1:04d}"
             checkpoint_dir.mkdir(parents=True, exist_ok=True)
             trainer.save(checkpoint_dir.as_posix())
             print(f"  Checkpoint saved to {checkpoint_dir}")
-    
+
     # Save final checkpoint
     final_checkpoint = output_path / experiment_name / "final"
     final_checkpoint.mkdir(parents=True, exist_ok=True)
     trainer.save(final_checkpoint.as_posix())
     print(f"\nFinal checkpoint saved to {final_checkpoint}")
-    
+
     # Cleanup
     trainer.stop()
     ray.shutdown()
-    
+
     print("\nTraining complete!")
     return final_checkpoint.as_posix()
 
@@ -164,63 +167,46 @@ def train_cql(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train CQL on offline Ludo data")
     parser.add_argument(
-        '--data_dir',
+        "--data_dir", type=str, required=True, help="Directory containing offline data"
+    )
+    parser.add_argument(
+        "--encoding_type",
         type=str,
-        required=True,
-        help='Directory containing offline data'
+        default="handcrafted",
+        choices=["handcrafted", "onehot"],
+        help="State encoding type",
     )
     parser.add_argument(
-        '--encoding_type',
-        type=str,
-        default='handcrafted',
-        choices=['handcrafted', 'onehot'],
-        help='State encoding type'
+        "--num_iterations", type=int, default=100, help="Number of training iterations"
     )
+    parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument(
-        '--num_iterations',
-        type=int,
-        default=100,
-        help='Number of training iterations'
-    )
-    parser.add_argument(
-        '--lr',
-        type=float,
-        default=3e-4,
-        help='Learning rate'
-    )
-    parser.add_argument(
-        '--train_batch_size',
+        "--train_batch_size",
         type=int,
         default=256,
-        help='Training batch size per learner'
+        help="Training batch size per learner",
     )
     parser.add_argument(
-        '--bc_iters',
+        "--bc_iters",
         type=int,
         default=20000,
-        help='Number of BC pretraining iterations'
+        help="Number of BC pretraining iterations",
     )
     parser.add_argument(
-        '--temperature',
-        type=float,
-        default=1.0,
-        help='CQL temperature parameter'
+        "--temperature", type=float, default=1.0, help="CQL temperature parameter"
     )
     parser.add_argument(
-        '--output_dir',
+        "--output_dir",
         type=str,
-        default='checkpoints/cql',
-        help='Output directory for checkpoints'
+        default="checkpoints/cql",
+        help="Output directory for checkpoints",
     )
     parser.add_argument(
-        '--experiment_name',
-        type=str,
-        default=None,
-        help='Experiment name'
+        "--experiment_name", type=str, default=None, help="Experiment name"
     )
-    
+
     args = parser.parse_args()
-    
+
     train_cql(
         data_dir=args.data_dir,
         encoding_type=args.encoding_type,
@@ -230,6 +216,5 @@ if __name__ == "__main__":
         bc_iters=args.bc_iters,
         temperature=args.temperature,
         output_dir=args.output_dir,
-        experiment_name=args.experiment_name
+        experiment_name=args.experiment_name,
     )
-

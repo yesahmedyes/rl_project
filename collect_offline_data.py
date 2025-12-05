@@ -85,13 +85,16 @@ def collect_episode(env, policy, max_steps=1000):
         step_count += 1
 
     # Create episode data in RLlib format
+    # RLlib expects: obs, new_obs, actions, rewards, terminateds, truncateds, infos
+    # obs = observations[:-1], new_obs = observations[1:]
     episode_data = {
-        "observations": observations,
+        "obs": observations[:-1],  # All observations except the last
+        "new_obs": observations[1:],  # All observations except the first
         "actions": actions,
         "rewards": rewards,
         "terminateds": terminateds,
         "truncateds": truncateds,
-        "infos": infos,
+        "infos": infos[1:],  # Match with actions (exclude first info)
         "episode_length": step_count,
         "episode_return": sum(rewards),
     }
@@ -158,14 +161,31 @@ def collect_dataset(
         if episode_data["infos"][-1].get("agent_won", False):
             win_count += 1
 
-        # Save episodes in batches
+        # Save episodes in batches (flatten to transitions)
         if (episode_idx + 1) % 100 == 0 or (episode_idx + 1) == num_episodes:
+            # Flatten episodes to transitions for RLlib
+            transitions = []
+            for ep in all_episodes:
+                for i in range(len(ep["actions"])):
+                    transition = {
+                        "obs": ep["obs"][i],
+                        "new_obs": ep["new_obs"][i],
+                        "actions": ep["actions"][i],
+                        "rewards": ep["rewards"][i],
+                        "terminateds": ep["terminateds"][i],
+                        "truncateds": ep["truncateds"][i],
+                    }
+                    transitions.append(transition)
+
+            start_idx = episode_idx - len(all_episodes) + 2
             batch_file = (
-                output_path
-                / f"episodes_{episode_idx - len(all_episodes) + 2:06d}_{episode_idx + 1:06d}.json"
+                output_path / f"transitions_{start_idx:06d}_{episode_idx + 1:06d}.json"
             )
+
             with open(batch_file, "w") as f:
-                json.dump(all_episodes, f)
+                # Write as JSONL (one transition per line)
+                for transition in transitions:
+                    f.write(json.dumps(transition) + "\n")
             all_episodes = []
 
     # Print statistics

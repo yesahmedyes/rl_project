@@ -100,7 +100,8 @@ def train_iql(
     # Set offline data source
     config = config.offline_data(
         input_=[Path(data_dir).as_posix()],
-        input_read_method="read_json",
+        input_read_method="read_json",  # Read JSONL files
+        input_read_method_kwargs={"lines": True},  # Line-delimited JSON
         dataset_num_iters_per_learner=1,
     )
 
