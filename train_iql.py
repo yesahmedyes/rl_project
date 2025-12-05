@@ -122,11 +122,12 @@ def train_iql(
     print(f"Found {len(transition_files)} transition files: {transition_files}")
 
     # Load offline data using Ray Data
-    # Read JSONL files and prepare for RLlib
-    dataset = ray.data.read_json(transition_files)
+    # For new API stack, create dataset and pass it properly
+    def load_data():
+        return ray.data.read_json(transition_files)
 
     config = config.offline_data(
-        input_=dataset,
+        input_=load_data,
         dataset_num_iters_per_learner=1,
     )
 
