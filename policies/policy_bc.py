@@ -78,14 +78,30 @@ class Policy_BC:
                 train_batch_size_per_learner=64,
             )
 
-            # No offline data needed at inference time
+            # No offline data needed at inference time; use a sampler input to
+            # avoid JsonReader initialization paths that expect file inputs.
             config.offline_data(
-                input_=None,
+                input_="sampler",
                 dataset_num_iters_per_learner=1,
             )
 
             self.algo = config.build()
-            self.algo.restore(str(ckpt_dir))
+            # If a full Algorithm checkpoint is available, restore it; otherwise
+            # try to load a policy-only state dict (e.g., policy_state.pkl).
+            try:
+                self.algo.restore(str(ckpt_dir))
+            except ValueError:
+                # Likely a policy-only checkpoint; load directly into the policy.
+                policy_state = torch.load(str(ckpt), map_location=self.device)
+                policy = self.algo.get_policy()
+                if hasattr(policy, "import_state"):
+                    policy.import_state(policy_state)
+                elif hasattr(policy, "set_state"):
+                    policy.set_state(policy_state)
+                else:
+                    raise RuntimeError(
+                        "Policy checkpoint could not be loaded: no import_state/set_state"
+                    )
 
         self.policy = self.algo.get_policy()
 
