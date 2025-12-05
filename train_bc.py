@@ -94,7 +94,6 @@ def train_bc(
 
     # Set resources
     config.resources(
-        num_learners=1,
         num_gpus_per_learner=0,  # Set to 1 if you have GPU
     )
 
@@ -231,7 +230,6 @@ def train_bc_with_tune(
     )
 
     config.resources(
-        num_learners=1,
         num_gpus_per_learner=0,
     )
 
