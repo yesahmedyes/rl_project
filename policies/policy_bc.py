@@ -3,6 +3,7 @@ import torch
 import ray
 from pathlib import Path
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.bc import BCConfig
 from misc.state_encoding import encode_handcrafted_state, encode_onehot_state
 
 
@@ -31,8 +32,51 @@ class Policy_BC:
                 log_to_driver=False,
             )
 
-        # Restore full algorithm (config + weights)
-        self.algo = Algorithm.from_checkpoint(str(ckpt))
+        # RLlib v0 checkpoints need manual config + restore; newer checkpoints can
+        # use Algorithm.from_checkpoint. We support both.
+        ckpt_dir = ckpt if ckpt.is_dir() else ckpt.parent
+
+        try:
+            # Try the modern loader first
+            self.algo = Algorithm.from_checkpoint(str(ckpt))
+        except ValueError:
+            # Build a compatible BC config (mirrors train_bc.py)
+            config = BCConfig()
+            config.api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+
+            if self.encoding_type == "handcrafted":
+                obs_space_shape = (70,)
+            elif self.encoding_type == "onehot":
+                obs_space_shape = (946,)
+            else:
+                raise ValueError(f"Unknown encoding type: {self.encoding_type}")
+
+            config.environment(
+                observation_space=(
+                    "Box",
+                    {"shape": obs_space_shape, "low": -np.inf, "high": np.inf},
+                ),
+                action_space=("Discrete", {"n": 12}),
+            )
+
+            # Minimal training settings (not used in inference but required)
+            config.training(
+                lr=1e-4,
+                train_batch_size_per_learner=64,
+            )
+
+            # No offline data needed at inference time
+            config.offline_data(
+                input_=None,
+                dataset_num_iters_per_learner=1,
+            )
+
+            self.algo = config.build()
+            self.algo.restore(str(ckpt_dir))
+
         self.policy = self.algo.get_policy()
 
         # Ensure model sits on the requested device
