@@ -1,0 +1,26 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual envs
+.env/
+.venv/
+env/
+venv/
+
+# OS metadata
+.DS_Store
+
+# Checkpoints / outputs
+bc_results/
+offline_data/
+*.zip
+
+# Ray / logs
+.ray/
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+
