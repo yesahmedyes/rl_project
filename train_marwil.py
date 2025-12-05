@@ -110,19 +110,10 @@ def train_marwil(
         input_read_method="read_json",
         dataset_num_iters_per_learner=1,
     )
-    
-    # Set resources
-    config = config.resources(
-        num_learners=1,
-    )
-    
-    # Set evaluation
+
+    # Set evaluation (disabled for offline training)
     config = config.evaluation(
-        evaluation_interval=10,
-        evaluation_duration=10,
-        evaluation_config={
-            "explore": False,
-        }
+        evaluation_interval=None,  # Disable evaluation during training
     )
     
     # Create output directory

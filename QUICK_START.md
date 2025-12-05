@@ -13,6 +13,7 @@ python run_all_experiments.py \
 ```
 
 That's it! The script will:
+
 - ✅ Collect 1000 episodes from heuristic expert
 - ✅ Train BC, CQL, IQL, and MARWIL
 - ✅ Evaluate all 4 algorithms
@@ -23,8 +24,9 @@ That's it! The script will:
 After ~30-60 minutes (depending on hardware), you'll have:
 
 1. **Trained Models** in `checkpoints/`
+
    - `checkpoints/bc/` - Behavior Cloning
-   - `checkpoints/cql/` - Conservative Q-Learning  
+   - `checkpoints/cql/` - Conservative Q-Learning
    - `checkpoints/iql/` - Implicit Q-Learning
    - `checkpoints/marwil/` - MARWIL
 
@@ -37,16 +39,17 @@ After ~30-60 minutes (depending on hardware), you'll have:
 
 ## 🎯 Algorithm Overview
 
-| Algorithm | Type | Best For |
-|-----------|------|----------|
-| **BC** | Pure Imitation | Fast baseline, mimics expert exactly |
-| **CQL** | Offline RL | Learning from imperfect data |
-| **IQL** | Offline RL | Stable training, handles data variance |
-| **MARWIL** | Hybrid IL+RL | Balance between imitation and improvement |
+| Algorithm  | Type           | Best For                                  |
+| ---------- | -------------- | ----------------------------------------- |
+| **BC**     | Pure Imitation | Fast baseline, mimics expert exactly      |
+| **CQL**    | Offline RL     | Learning from imperfect data              |
+| **IQL**    | Offline RL     | Stable training, handles data variance    |
+| **MARWIL** | Hybrid IL+RL   | Balance between imitation and improvement |
 
 ## ⚙️ Common Options
 
 ### Quick Test (5 minutes)
+
 ```bash
 python run_all_experiments.py \
     --num_data_episodes 100 \
@@ -55,6 +58,7 @@ python run_all_experiments.py \
 ```
 
 ### High Quality (2-3 hours)
+
 ```bash
 python run_all_experiments.py \
     --num_data_episodes 5000 \
@@ -63,6 +67,7 @@ python run_all_experiments.py \
 ```
 
 ### Use Different Expert
+
 ```bash
 # Train from milestone2 expert
 python run_all_experiments.py \
@@ -76,6 +81,7 @@ python run_all_experiments.py \
 ```
 
 ### Use Different Encoding
+
 ```bash
 # Use one-hot encoding (946 dims instead of 70)
 python run_all_experiments.py \
@@ -120,6 +126,7 @@ MARWIL    ~90-95%  ~48-58%      ~32-42%
 ## 🔧 Step-by-Step (For More Control)
 
 ### 1. Collect Data Only
+
 ```bash
 python collect_offline_data.py \
     --num_episodes 1000 \
@@ -127,6 +134,7 @@ python collect_offline_data.py \
 ```
 
 ### 2. Train Specific Algorithm
+
 ```bash
 # Train just BC
 python train_bc.py \
@@ -140,6 +148,7 @@ python train_cql.py \
 ```
 
 ### 3. Evaluate Specific Checkpoint
+
 ```bash
 python evaluate_policies.py \
     --bc_checkpoint checkpoints/bc/BC_heuristic_handcrafted/final \
@@ -152,6 +161,7 @@ python evaluate_policies.py \
 ## 🐛 Troubleshooting
 
 ### "Out of Memory"
+
 ```bash
 # Use smaller batch sizes
 python train_bc.py --data_dir ... --train_batch_size 128
@@ -159,13 +169,16 @@ python train_cql.py --data_dir ... --train_batch_size 64
 ```
 
 ### "Ray is already running"
+
 ```bash
 ray stop
 # Then run your command again
 ```
 
 ### "Data directory not found"
+
 Make sure you collected data first:
+
 ```bash
 python collect_offline_data.py --num_episodes 1000
 ```
@@ -198,10 +211,10 @@ A: On a modern CPU: ~30-60 min for 1000 episodes + 100 iterations per algorithm.
 
 **Q: Can I use GPU?**  
 A: Yes! PyTorch will automatically use GPU if available. Install with:
+
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu118
 ```
 
 **Q: Why are my results different?**  
 A: Training is stochastic. Run multiple seeds or increase data/training iterations.
-

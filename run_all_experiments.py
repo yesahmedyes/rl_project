@@ -93,8 +93,7 @@ def main(
         ('IQL', 'train_iql.py', {
             'lr': '3e-4',
             'train_batch_size': '256',
-            'expectile': '0.7',
-            'temperature': '3.0'
+            'expectile': '0.7'
         }),
         ('MARWIL', 'train_marwil.py', {
             'lr': '1e-4',
