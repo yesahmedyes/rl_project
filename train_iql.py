@@ -121,7 +121,7 @@ def train_iql(
 
     # Create trainer
     print("\nBuilding IQL trainer...")
-    trainer = config.build()
+    trainer = config.build_algo()
 
     # Training loop
     print("\nStarting training...")

@@ -125,7 +125,7 @@ def train_cql(
 
     # Create trainer
     print("\nBuilding CQL trainer...")
-    trainer = config.build()
+    trainer = config.build_algo()
 
     # Training loop
     print("\nStarting training...")

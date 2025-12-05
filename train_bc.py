@@ -140,6 +140,7 @@ def train_bc(
     # Set evaluation (disabled for offline training)
     config = config.evaluation(
         evaluation_interval=None,  # Disable evaluation during training
+        off_policy_estimation_methods={},  # Explicitly set to empty to avoid deprecation warning
     )
 
     # Create output directory
@@ -153,7 +154,7 @@ def train_bc(
 
     # Create trainer
     print("\nBuilding BC trainer...")
-    trainer = config.build()
+    trainer = config.build_algo()
 
     # Training loop
     print("\nStarting training...")
