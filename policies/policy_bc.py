@@ -20,6 +20,7 @@ class Policy_BC:
         self.device = torch.device("cpu" if device == "auto" else device)
 
         ckpt = Path(checkpoint_path)
+
         if not ckpt.exists():
             raise FileNotFoundError(
                 f"Checkpoint not found at {checkpoint_path}. "
@@ -33,15 +34,11 @@ class Policy_BC:
                 log_to_driver=False,
             )
 
-        # RLlib v0 checkpoints need manual config + restore; newer checkpoints can
-        # use Algorithm.from_checkpoint. We support both.
         ckpt_dir = ckpt if ckpt.is_dir() else ckpt.parent
 
         try:
-            # Try the modern loader first (use the directory if a file path is given)
             self.algo = Algorithm.from_checkpoint(str(ckpt_dir))
         except ValueError:
-            # Build a compatible BC config (mirrors train_bc.py)
             config = BCConfig()
             config.api_stack(
                 enable_rl_module_and_learner=False,
@@ -78,22 +75,25 @@ class Policy_BC:
                 train_batch_size_per_learner=64,
             )
 
-            # No offline data needed at inference time; use a sampler input to
-            # avoid JsonReader initialization paths that expect file inputs.
             config.offline_data(
                 input_="sampler",
                 dataset_num_iters_per_learner=1,
             )
 
             self.algo = config.build()
-            # If a full Algorithm checkpoint is available, restore it; otherwise
-            # try to load a policy-only state dict (e.g., policy_state.pkl).
+
             try:
                 self.algo.restore(str(ckpt_dir))
             except ValueError:
-                # Likely a policy-only checkpoint; load directly into the policy.
-                policy_state = torch.load(str(ckpt), map_location=self.device)
+                try:
+                    policy_state = torch.load(str(ckpt), map_location=self.device)
+                except Exception:
+                    policy_state = torch.load(
+                        str(ckpt), map_location=self.device, weights_only=False
+                    )
+
                 policy = self.algo.get_policy()
+
                 if hasattr(policy, "import_state"):
                     policy.import_state(policy_state)
                 elif hasattr(policy, "set_state"):
