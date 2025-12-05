@@ -26,3 +26,10 @@ checkpoint_*/
 # OS
 .DS_Store
 Thumbs.db
+
+# Offline RL artifacts
+offline_data/
+checkpoints/
+evaluation_results*.json
+ray_results/
+~/ray_results/

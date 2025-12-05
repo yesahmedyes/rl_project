@@ -1,0 +1,23 @@
+# Requirements for Offline RL Training with RLlib
+# Install with: pip install -r requirements_offline_rl.txt
+
+# Core dependencies
+ray[rllib]>=2.9.0
+gymnasium>=0.29.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Deep Learning
+torch>=2.0.0
+
+# Data processing
+pyarrow>=10.0.0
+
+# Visualization and utilities
+tqdm>=4.65.0
+matplotlib>=3.7.0
+tensorboard>=2.13.0
+
+# Optional: GPU support for PyTorch
+# torch==2.0.0+cu118 -f https://download.pytorch.org/whl/torch_stable.html
+
