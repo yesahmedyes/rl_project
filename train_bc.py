@@ -1,226 +1,294 @@
-"""
-Train a policy using Behavior Cloning (BC) on offline data.
-BC is pure imitation learning - learns to directly mimic the expert policy.
-"""
-
-import ray
-import ray.data
-import gymnasium as gym
 import numpy as np
 import argparse
-import json
 from pathlib import Path
+import gymnasium as gym
 from ray.rllib.algorithms.bc import BCConfig
-from ray.rllib.algorithms.bc.bc import BC
-from ray import tune, air
-from gymnasium import spaces
-
-from env.ludo_gym_env import LudoGymEnv
-
-
-def load_episodes_to_rllib_format(data_dir):
-    """
-    Load episodes from JSON files and convert to RLlib format.
-    """
-    data_path = Path(data_dir)
-    episode_files = sorted(data_path.glob("episodes_*.json"))
-
-    all_episodes = []
-    for file in episode_files:
-        with open(file, "r") as f:
-            episodes = json.load(f)
-            all_episodes.extend(episodes)
-
-    print(f"Loaded {len(all_episodes)} episodes from {data_dir}")
-
-    # Convert to RLlib batch format
-    batch_data = {
-        "obs": [],
-        "actions": [],
-        "rewards": [],
-        "terminateds": [],
-        "truncateds": [],
-        "infos": [],
-    }
-
-    for episode in all_episodes:
-        # All observations except the last one
-        batch_data["obs"].extend(episode["observations"][:-1])
-        batch_data["actions"].extend(episode["actions"])
-        batch_data["rewards"].extend(episode["rewards"])
-        batch_data["terminateds"].extend(episode["terminateds"])
-        batch_data["truncateds"].extend(episode["truncateds"])
-        batch_data["infos"].extend(episode["infos"])
-
-    return batch_data
+from ray import tune, train
+import ray
 
 
 def train_bc(
     data_dir,
     encoding_type="handcrafted",
     num_iterations=100,
-    lr=1e-4,
-    train_batch_size=512,
-    output_dir="checkpoints/bc",
-    experiment_name=None,
+    checkpoint_freq=10,
+    eval_env_type="heuristic",
+    output_dir="bc_results",
 ):
     """
-    Train a BC policy on offline data.
+    Train a Behavior Cloning model using Ray RLlib's new API stack.
+
+    Args:
+        data_dir: Directory containing offline data collected by collect_offline_data.py
+        encoding_type: State encoding type ('handcrafted' or 'onehot')
+        num_iterations: Number of training iterations
+        checkpoint_freq: Checkpoint frequency
+        eval_env_type: Type of opponent for evaluation environment
+        output_dir: Directory to save training results
+    """
+    # Initialize Ray
+    if not ray.is_initialized():
+        ray.init()
+
+    # Get data path
+    data_path = Path(data_dir)
+    if not data_path.exists():
+        raise ValueError(f"Data directory does not exist: {data_path}")
+
+    print(f"Training BC on data from: {data_path}")
+    print(f"Encoding type: {encoding_type}")
+
+    # Define observation and action spaces based on encoding type
+    if encoding_type == "handcrafted":
+        # Handcrafted encoding: 36 features
+        # Per piece (4 pieces): position (1), in_home (1), in_goal (1), vulnerable (1),
+        # safe (1), can_capture (1), blocks_opponent (1), progress (1), escaped_home (1)
+        # = 9 features per piece * 4 pieces = 36 features
+        observation_space = gym.spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(36,),
+            dtype=np.float32,
+        )
+    else:  # onehot
+        # One-hot encoding: more features depending on implementation
+        # This needs to match your actual one-hot encoding size
+        observation_space = gym.spaces.Box(
+            low=0.0,
+            high=1.0,
+            shape=(200,),  # Adjust based on your actual one-hot size
+            dtype=np.float32,
+        )
+
+    # Action space: 4 pieces to choose from
+    action_space = gym.spaces.Discrete(4)
+
+    # Create BC configuration with new API stack
+    config = BCConfig()
+
+    # Enable the new API stack
+    config.api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
+
+    # Define the environment spaces
+    config.environment(
+        observation_space=observation_space,
+        action_space=action_space,
+    )
+
+    # Set training parameters
+    config.training(
+        lr=1e-4,
+        train_batch_size_per_learner=512,
+        # BC uses standard supervised learning
+    )
+
+    # Configure offline data
+    config.offline_data(
+        input_=[data_path.as_posix()],
+        # Number of passes through the dataset per training iteration
+        dataset_num_iters_per_learner=1,
+    )
+
+    # Set resources
+    config.resources(
+        num_learners=1,
+        num_gpus_per_learner=0,  # Set to 1 if you have GPU
+    )
+
+    # Configure evaluation (optional - only if you want to evaluate during training)
+    # Note: For offline RL, evaluation requires setting up an actual environment
+    # which we skip here for simplicity
+    config.evaluation(
+        evaluation_interval=None,  # Disable online evaluation
+        evaluation_duration=0,
+    )
+
+    # Set reporting
+    config.reporting(
+        min_sample_timesteps_per_iteration=1000,
+    )
+
+    print("\nBC Configuration:")
+    print(f"  Learning rate: {config.lr}")
+    print(f"  Train batch size per learner: {config.train_batch_size_per_learner}")
+    print(f"  Dataset iterations per learner: {config.dataset_num_iters_per_learner}")
+    print(f"  Number of training iterations: {num_iterations}")
+
+    # Build the algorithm
+    algo = config.build()
+
+    print("\nStarting training...")
+
+    # Training loop
+    best_loss = float("inf")
+    for iteration in range(num_iterations):
+        result = algo.train()
+
+        # Extract relevant metrics
+        info = result.get("info", {})
+        learner_info = info.get("learner", {})
+
+        # Get loss from learner info
+        loss = learner_info.get("total_loss", learner_info.get("loss", None))
+
+        print(f"\nIteration {iteration + 1}/{num_iterations}")
+        if loss is not None:
+            print(f"  Loss: {loss:.6f}")
+            if loss < best_loss:
+                best_loss = loss
+                print(f"  New best loss!")
+
+        # Print other relevant metrics
+        if "learner" in info:
+            for key, value in learner_info.items():
+                if key != "total_loss" and isinstance(value, (int, float)):
+                    print(f"  {key}: {value}")
+
+        # Save checkpoint
+        if (iteration + 1) % checkpoint_freq == 0:
+            checkpoint_dir = algo.save(checkpoint_dir=output_dir)
+            print(f"  Checkpoint saved to: {checkpoint_dir}")
+
+    # Save final checkpoint
+    final_checkpoint = algo.save(checkpoint_dir=output_dir)
+    print(f"\nTraining complete!")
+    print(f"Final checkpoint saved to: {final_checkpoint}")
+    print(f"Best loss achieved: {best_loss:.6f}")
+
+    # Cleanup
+    algo.stop()
+    ray.shutdown()
+
+    return final_checkpoint
+
+
+def train_bc_with_tune(
+    data_dir,
+    encoding_type="handcrafted",
+    num_iterations=100,
+    output_dir="bc_tune_results",
+):
+    """
+    Train BC using Ray Tune for hyperparameter tuning.
 
     Args:
         data_dir: Directory containing offline data
         encoding_type: State encoding type
         num_iterations: Number of training iterations
-        lr: Learning rate
-        train_batch_size: Training batch size
-        output_dir: Directory to save checkpoints
-        experiment_name: Name for the experiment
+        output_dir: Directory to save tuning results
     """
     # Initialize Ray
     if not ray.is_initialized():
-        ray.init(ignore_reinit_error=True)
+        ray.init()
 
-    # Load dataset info
-    info_file = Path(data_dir) / "dataset_info.json"
-    with open(info_file, "r") as f:
-        dataset_info = json.load(f)
-
-    print("=" * 50)
-    print("Training Behavior Cloning (BC)")
-    print("=" * 50)
-    print(f"Data directory: {data_dir}")
-    print(f"Encoding type: {encoding_type}")
-    print(f"Dataset info: {dataset_info}")
-    print(f"Learning rate: {lr}")
-    print(f"Train batch size: {train_batch_size}")
-    print(f"Number of iterations: {num_iterations}")
-    print("=" * 50)
+    data_path = Path(data_dir)
+    if not data_path.exists():
+        raise ValueError(f"Data directory does not exist: {data_path}")
 
     # Define observation and action spaces
     if encoding_type == "handcrafted":
-        state_dim = 70
-    elif encoding_type == "onehot":
-        state_dim = 946
+        observation_space = gym.spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(36,),
+            dtype=np.float32,
+        )
     else:
-        raise ValueError(f"Unknown encoding_type: {encoding_type}")
+        observation_space = gym.spaces.Box(
+            low=0.0,
+            high=1.0,
+            shape=(200,),
+            dtype=np.float32,
+        )
 
-    observation_space = spaces.Box(
-        low=0.0, high=1.0, shape=(state_dim,), dtype=np.float32
-    )
-    action_space = spaces.Discrete(12)
+    action_space = gym.spaces.Discrete(4)
 
-    # Create BC config
+    # Create BC configuration
     config = BCConfig()
 
-    # Enable new API stack
-    config = config.api_stack(
+    config.api_stack(
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
 
-    # Set framework (required for new API stack)
-    config = config.framework("torch")
-
-    # Set environment
-    config = config.environment(
+    config.environment(
         observation_space=observation_space,
         action_space=action_space,
     )
 
-    # Configure learners for offline learning
-    config = config.learners(
-        num_learners=1,
+    # Use Ray Tune for hyperparameter search
+    config.training(
+        lr=tune.grid_search([1e-3, 1e-4, 1e-5]),
+        train_batch_size_per_learner=tune.choice([256, 512, 1024]),
     )
 
-    # Disable env runners since we're doing pure offline learning
-    config = config.env_runners(
-        num_env_runners=0,  # No environment interaction for offline RL
-    )
-
-    # Set training parameters
-    config = config.training(
-        lr=lr,
-        train_batch_size_per_learner=train_batch_size,
-    )
-
-    # Set offline data source
-    # Only read transition files (not dataset_info.json)
-    data_path = Path(data_dir)
-    transition_files = [str(f) for f in sorted(data_path.glob("transitions_*.json"))]
-
-    if not transition_files:
-        raise ValueError(f"No transition files found in {data_dir}")
-
-    print(f"Found {len(transition_files)} transition files: {transition_files}")
-
-    # Load offline data using Ray Data
-    # For new API stack, create dataset and pass it properly
-    def load_data():
-        return ray.data.read_json(transition_files)
-
-    config = config.offline_data(
-        input_=load_data,
+    config.offline_data(
+        input_=[data_path.as_posix()],
         dataset_num_iters_per_learner=1,
     )
 
-    # Set evaluation (disabled for offline training)
-    config = config.evaluation(
-        evaluation_interval=None,  # Disable evaluation during training
-        off_policy_estimation_methods={},  # Explicitly set to empty to avoid deprecation warning
+    config.resources(
+        num_learners=1,
+        num_gpus_per_learner=0,
     )
 
-    # Create output directory
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    config.evaluation(
+        evaluation_interval=None,
+        evaluation_duration=0,
+    )
 
-    # Set experiment name
-    if experiment_name is None:
-        expert_type = dataset_info.get("expert_type", "unknown")
-        experiment_name = f"BC_{expert_type}_{encoding_type}"
+    print("Starting hyperparameter tuning with Ray Tune...")
+    print(f"Data path: {data_path}")
+    print(f"Output directory: {output_dir}")
 
-    # Create trainer
-    print("\nBuilding BC trainer...")
-    trainer = config.build()
+    # Set up the tuner
+    tuner = tune.Tuner(
+        "BC",
+        param_space=config.to_dict(),
+        run_config=train.RunConfig(
+            stop={"training_iteration": num_iterations},
+            checkpoint_config=train.CheckpointConfig(
+                checkpoint_frequency=10,
+                checkpoint_at_end=True,
+            ),
+            storage_path=output_dir,
+            name="bc_tuning",
+        ),
+    )
 
-    # Training loop
-    print("\nStarting training...")
-    best_reward = -float("inf")
+    # Run the tuning
+    results = tuner.fit()
 
-    for iteration in range(num_iterations):
-        result = trainer.train()
+    print("\nTuning complete!")
+    print(f"Results saved to: {output_dir}")
 
-        # Print progress
-        print(f"\nIteration {iteration + 1}/{num_iterations}")
-        print(
-            f"  Mean loss: {result.get('info', {}).get('learner', {}).get('default_policy', {}).get('total_loss', 'N/A')}"
-        )
+    # Get best result
+    best_result = results.get_best_result(metric="info/learner/total_loss", mode="min")
+    print(f"\nBest configuration:")
+    print(f"  Learning rate: {best_result.config['lr']}")
+    print(f"  Batch size: {best_result.config['train_batch_size_per_learner']}")
+    print(f"  Best loss: {best_result.metrics.get('info/learner/total_loss', 'N/A')}")
 
-        # Save checkpoint periodically
-        if (iteration + 1) % 10 == 0:
-            checkpoint_dir = output_path / experiment_name / f"iter_{iteration + 1:04d}"
-            checkpoint_dir.mkdir(parents=True, exist_ok=True)
-            trainer.save(checkpoint_dir.as_posix())
-            print(f"  Checkpoint saved to {checkpoint_dir}")
-
-    # Save final checkpoint
-    final_checkpoint = output_path / experiment_name / "final"
-    final_checkpoint.mkdir(parents=True, exist_ok=True)
-    trainer.save(final_checkpoint.as_posix())
-    print(f"\nFinal checkpoint saved to {final_checkpoint}")
-
-    # Cleanup
-    trainer.stop()
     ray.shutdown()
 
-    print("\nTraining complete!")
-    return final_checkpoint.as_posix()
+    return best_result
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train BC on offline Ludo data")
-    parser.add_argument(
-        "--data_dir", type=str, required=True, help="Directory containing offline data"
+    parser = argparse.ArgumentParser(
+        description="Train Behavior Cloning model using Ray RLlib"
     )
+
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        required=True,
+        help="Directory containing offline data",
+    )
+
     parser.add_argument(
         "--encoding_type",
         type=str,
@@ -228,34 +296,48 @@ if __name__ == "__main__":
         choices=["handcrafted", "onehot"],
         help="State encoding type",
     )
+
     parser.add_argument(
-        "--num_iterations", type=int, default=100, help="Number of training iterations"
-    )
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument(
-        "--train_batch_size",
+        "--num_iterations",
         type=int,
-        default=512,
-        help="Training batch size per learner",
+        default=100,
+        help="Number of training iterations",
     )
+
+    parser.add_argument(
+        "--checkpoint_freq",
+        type=int,
+        default=10,
+        help="Checkpoint frequency",
+    )
+
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="checkpoints/bc",
-        help="Output directory for checkpoints",
+        default="bc_results",
+        help="Output directory for checkpoints and results",
     )
+
     parser.add_argument(
-        "--experiment_name", type=str, default=None, help="Experiment name"
+        "--use_tune",
+        action="store_true",
+        help="Use Ray Tune for hyperparameter tuning",
     )
 
     args = parser.parse_args()
 
-    train_bc(
-        data_dir=args.data_dir,
-        encoding_type=args.encoding_type,
-        num_iterations=args.num_iterations,
-        lr=args.lr,
-        train_batch_size=args.train_batch_size,
-        output_dir=args.output_dir,
-        experiment_name=args.experiment_name,
-    )
+    if args.use_tune:
+        train_bc_with_tune(
+            data_dir=args.data_dir,
+            encoding_type=args.encoding_type,
+            num_iterations=args.num_iterations,
+            output_dir=args.output_dir,
+        )
+    else:
+        train_bc(
+            data_dir=args.data_dir,
+            encoding_type=args.encoding_type,
+            num_iterations=args.num_iterations,
+            checkpoint_freq=args.checkpoint_freq,
+            output_dir=args.output_dir,
+        )

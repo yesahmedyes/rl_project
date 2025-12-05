@@ -3,24 +3,18 @@ import json
 import argparse
 from pathlib import Path
 from tqdm import tqdm
+from ray.rllib.offline.json_writer import JsonWriter
 from env.ludo_gym_env import LudoGymEnv
 from policies.policy_random import Policy_Random
 from policies.policy_heuristic import Policy_Heuristic
 from policies.milestone2 import Policy_Milestone2
 
 
-def collect_episode(env, policy, max_steps=1000):
-    """
-    Collect a single episode using the given policy.
-
-    Returns:
-        episode_data: Dictionary containing episode information
-    """
+def collect_episode(env, policy, episode_id, max_steps=1000):
     observations = []
     actions = []
     rewards = []
-    terminateds = []
-    truncateds = []
+    dones = []  # RLlib uses "dones" instead of "terminateds"
     infos = []
 
     obs, info = env.reset()
@@ -70,8 +64,7 @@ def collect_episode(env, policy, max_steps=1000):
         actions.append(int(action))
         rewards.append(float(reward))
         observations.append(next_obs.tolist())
-        terminateds.append(bool(terminated))
-        truncateds.append(bool(truncated))
+        dones.append(bool(terminated or truncated))  # RLlib combines both
         infos.append(
             {
                 "action_mask": info["action_mask"].tolist()
@@ -84,22 +77,28 @@ def collect_episode(env, policy, max_steps=1000):
         obs = next_obs
         step_count += 1
 
-    # Create episode data in RLlib format
-    # RLlib expects: obs, new_obs, actions, rewards, terminateds, truncateds, infos
-    # obs = observations[:-1], new_obs = observations[1:]
+    # Create episode data in RLlib JsonWriter format
     episode_data = {
+        "type": "SampleBatch",
         "obs": observations[:-1],  # All observations except the last
         "new_obs": observations[1:],  # All observations except the first
         "actions": actions,
         "rewards": rewards,
-        "terminateds": terminateds,
-        "truncateds": truncateds,
+        "dones": dones,
         "infos": infos[1:],  # Match with actions (exclude first info)
-        "episode_length": step_count,
-        "episode_return": sum(rewards),
+        "eps_id": episode_id,
+        "agent_index": 0,
+        "unroll_id": episode_id,
+        "t": list(range(len(actions))),  # Timestep indices
     }
 
-    return episode_data
+    episode_stats = {
+        "episode_length": step_count,
+        "episode_return": sum(rewards),
+        "agent_won": infos[-1].get("agent_won", False) if infos else False,
+    }
+
+    return episode_data, episode_stats
 
 
 def collect_dataset(
@@ -110,17 +109,6 @@ def collect_dataset(
     output_dir="offline_data",
     max_steps_per_episode=1000,
 ):
-    """
-    Collect a dataset of episodes from an expert policy.
-
-    Args:
-        num_episodes: Number of episodes to collect
-        encoding_type: State encoding type ('handcrafted' or 'onehot')
-        opponent_type: Type of opponent policy
-        expert_type: Type of expert policy to collect from
-        output_dir: Directory to save collected data
-        max_steps_per_episode: Maximum steps per episode
-    """
     # Create output directory
     output_path = Path(output_dir) / f"{expert_type}_{encoding_type}"
     output_path.mkdir(parents=True, exist_ok=True)
@@ -147,54 +135,37 @@ def collect_dataset(
     print(f"Encoding: {encoding_type}, Opponent: {opponent_type}")
     print(f"Output directory: {output_path}")
 
-    all_episodes = []
+    # Initialize RLlib JsonWriter
+    writer = JsonWriter(str(output_path))
+
     total_return = 0
+    total_steps = 0
     win_count = 0
 
     for episode_idx in tqdm(range(num_episodes), desc="Collecting episodes"):
-        episode_data = collect_episode(
-            env, expert_policy, max_steps=max_steps_per_episode
+        # Collect episode
+        episode_data, episode_stats = collect_episode(
+            env, expert_policy, episode_id=episode_idx, max_steps=max_steps_per_episode
         )
-        all_episodes.append(episode_data)
 
-        total_return += episode_data["episode_return"]
-        if episode_data["infos"][-1].get("agent_won", False):
+        # Write episode using JsonWriter
+        writer.write(episode_data)
+
+        # Update statistics
+        total_return += episode_stats["episode_return"]
+        total_steps += episode_stats["episode_length"]
+        if episode_stats["agent_won"]:
             win_count += 1
-
-        # Save episodes in batches (flatten to transitions)
-        if (episode_idx + 1) % 100 == 0 or (episode_idx + 1) == num_episodes:
-            # Flatten episodes to transitions for RLlib
-            transitions = []
-            for ep in all_episodes:
-                for i in range(len(ep["actions"])):
-                    transition = {
-                        "obs": ep["obs"][i],
-                        "new_obs": ep["new_obs"][i],
-                        "actions": ep["actions"][i],
-                        "rewards": ep["rewards"][i],
-                        "terminateds": ep["terminateds"][i],
-                        "truncateds": ep["truncateds"][i],
-                    }
-                    transitions.append(transition)
-
-            start_idx = episode_idx - len(all_episodes) + 2
-            batch_file = (
-                output_path / f"transitions_{start_idx:06d}_{episode_idx + 1:06d}.json"
-            )
-
-            with open(batch_file, "w") as f:
-                # Write as JSONL (one transition per line)
-                for transition in transitions:
-                    f.write(json.dumps(transition) + "\n")
-            all_episodes = []
 
     # Print statistics
     avg_return = total_return / num_episodes
+    avg_steps = total_steps / num_episodes
     win_rate = (win_count / num_episodes) * 100
 
-    print(f"\nDataset Collection Complete!")
+    print("\nDataset Collection Complete!")
     print(f"Total episodes: {num_episodes}")
     print(f"Average return: {avg_return:.2f}")
+    print(f"Average episode length: {avg_steps:.2f}")
     print(f"Win rate: {win_rate:.2f}%")
     print(f"Data saved to: {output_path}")
 
@@ -208,6 +179,7 @@ def collect_dataset(
                 "opponent_type": opponent_type,
                 "expert_type": expert_type,
                 "avg_return": avg_return,
+                "avg_episode_length": avg_steps,
                 "win_rate": win_rate,
                 "max_steps_per_episode": max_steps_per_episode,
             },
@@ -220,9 +192,11 @@ def collect_dataset(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Collect offline dataset for Ludo")
+
     parser.add_argument(
         "--num_episodes", type=int, default=1000, help="Number of episodes to collect"
     )
+
     parser.add_argument(
         "--encoding_type",
         type=str,
@@ -230,6 +204,7 @@ if __name__ == "__main__":
         choices=["handcrafted", "onehot"],
         help="State encoding type",
     )
+
     parser.add_argument(
         "--opponent_type",
         type=str,
@@ -237,6 +212,7 @@ if __name__ == "__main__":
         choices=["random", "heuristic", "milestone2"],
         help="Opponent policy type",
     )
+
     parser.add_argument(
         "--expert_type",
         type=str,
@@ -244,12 +220,14 @@ if __name__ == "__main__":
         choices=["random", "heuristic", "milestone2"],
         help="Expert policy to collect from",
     )
+
     parser.add_argument(
         "--output_dir",
         type=str,
         default="offline_data",
         help="Output directory for collected data",
     )
+
     parser.add_argument(
         "--max_steps", type=int, default=1000, help="Maximum steps per episode"
     )
