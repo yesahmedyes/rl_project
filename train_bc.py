@@ -46,6 +46,14 @@ def train_bc(
     if not data_path.exists():
         raise ValueError(f"Data directory does not exist: {data_path}")
 
+    # Collect individual JSON episode files (RLlib needs file paths, not just a directory)
+    json_files = [
+        p.as_posix() for p in data_path.glob("*.json") if p.name != "dataset_info.json"
+    ]
+
+    if not json_files:
+        raise ValueError(f"No episode JSON files found in {data_path}")
+
     print(f"Training BC on data from: {data_path}")
     print(f"Encoding type: {encoding_type}")
 
@@ -90,7 +98,7 @@ def train_bc(
 
     # Configure offline data
     config.offline_data(
-        input_=[data_path.as_posix()],
+        input_=json_files,  # Explicitly pass JSON files so RLlib doesn't default to Parquet
         dataset_num_iters_per_learner=1,
     )
 
@@ -101,7 +109,7 @@ def train_bc(
     # Count and print dataset size
     num_samples, num_episodes = count_dataset_samples(data_path)
 
-    print(f"\nDataset Statistics:")
+    print("\nDataset Statistics:")
     print(f"  Total samples: {num_samples}")
     print(f"  Total episodes: {num_episodes}")
 

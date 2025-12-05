@@ -4,7 +4,7 @@ LOG_FILE="train_bc_${TIMESTAMP}.txt"
 echo "Starting training at $(date)"
 echo "Logging to: $LOG_FILE"
 
-python train_bc.py 2>&1 | tee "$LOG_FILE"
+python train_bc.py --data_dir "offline_data/heuristic_handcrafted" 2>&1 | tee "$LOG_FILE"
 
 EXIT_CODE=${PIPESTATUS[0]}
 
