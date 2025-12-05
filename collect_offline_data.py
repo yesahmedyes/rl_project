@@ -80,8 +80,6 @@ def collect_episode(env, policy, episode_id, max_steps=1000):
     # Create episode data in RLlib JsonWriter format
     timesteps = list(range(len(actions)))
 
-    # RLlib's JsonReader expects per-timestep arrays (not scalars) for episodic
-    # metadata; keep lengths aligned with actions to avoid zero-dim arrays.
     episode_data = {
         "obs": observations[:-1],  # All observations except the last
         "new_obs": observations[1:],  # All observations except the first
