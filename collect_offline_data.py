@@ -320,7 +320,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Collect offline dataset for Ludo")
 
     parser.add_argument(
-        "--num_episodes", type=int, default=10000, help="Number of episodes to collect"
+        "--num_episodes", type=int, default=100000, help="Number of episodes to collect"
     )
 
     parser.add_argument(
@@ -369,7 +369,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_workers",
         type=int,
-        default=48,
+        default=64,
         help="Number of parallel workers for data collection",
     )
 
