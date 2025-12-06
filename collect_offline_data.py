@@ -1,6 +1,8 @@
 import numpy as np
 import json
 import argparse
+import multiprocessing as mp
+import atexit
 from pathlib import Path
 from tqdm import tqdm
 from ray.rllib.offline.json_writer import JsonWriter
@@ -8,6 +10,42 @@ from env.ludo_gym_env import LudoGymEnv
 from policies.policy_random import Policy_Random
 from policies.policy_heuristic import Policy_Heuristic
 from policies.milestone2 import Policy_Milestone2
+
+# Worker-scoped globals for multiprocessing
+_worker_env = None
+_worker_policy = None
+_worker_max_steps = None
+
+
+def _init_worker(encoding_type, opponent_type, expert_type, reward_type, max_steps):
+    global _worker_env, _worker_policy, _worker_max_steps
+    _worker_env = LudoGymEnv(
+        encoding_type=encoding_type,
+        opponent_type=opponent_type,
+        agent_player=None,
+        use_dense_reward=reward_type == "dense",
+    )
+
+    if expert_type == "random":
+        _worker_policy = Policy_Random()
+    elif expert_type == "heuristic":
+        _worker_policy = Policy_Heuristic()
+    elif expert_type == "milestone2":
+        _worker_policy = Policy_Milestone2()
+    else:
+        raise ValueError(f"Unknown expert_type: {expert_type}")
+
+    _worker_max_steps = max_steps
+
+    # Ensure worker env is cleaned up when the process exits
+    atexit.register(_worker_env.close)
+
+
+def _collect_episode_worker(episode_id):
+    """Collect a single episode using worker-local env/policy."""
+    return collect_episode(
+        _worker_env, _worker_policy, episode_id, max_steps=_worker_max_steps
+    )
 
 
 def collect_episode(env, policy, episode_id, max_steps=1000):
@@ -110,32 +148,20 @@ def collect_dataset(
     reward_type="dense",
     output_dir="offline_data",
     max_steps_per_episode=1000,
+    num_workers=1,
 ):
     # Create output directory
-    output_path = Path(output_dir) / f"{expert_type}_{encoding_type}"
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    # Create environment
-    env = LudoGymEnv(
-        encoding_type=encoding_type,
-        opponent_type=opponent_type,
-        agent_player=None,  # Randomize which player the agent controls
-        use_dense_reward=reward_type == "dense",
+    output_path = (
+        Path(output_dir)
+        / f"{expert_type}_{encoding_type}"
+        / f"{expert_type}_vs_{opponent_type}"
     )
-
-    # Create expert policy
-    if expert_type == "random":
-        expert_policy = Policy_Random()
-    elif expert_type == "heuristic":
-        expert_policy = Policy_Heuristic()
-    elif expert_type == "milestone2":
-        expert_policy = Policy_Milestone2()
-    else:
-        raise ValueError(f"Unknown expert_type: {expert_type}")
+    output_path.mkdir(parents=True, exist_ok=True)
 
     print(f"Collecting {num_episodes} episodes using {expert_type} policy...")
     print(f"Encoding: {encoding_type}, Opponent: {opponent_type}")
     print(f"Output directory: {output_path}")
+    print(f"Workers: {num_workers}")
 
     # Initialize RLlib JsonWriter
     writer = JsonWriter(str(output_path))
@@ -144,20 +170,64 @@ def collect_dataset(
     total_steps = 0
     win_count = 0
 
-    for episode_idx in tqdm(range(num_episodes), desc="Collecting episodes"):
-        # Collect episode
-        episode_data, episode_stats = collect_episode(
-            env, expert_policy, episode_id=episode_idx, max_steps=max_steps_per_episode
+    if num_workers <= 1:
+        # Create environment and policy in the main process
+        env = LudoGymEnv(
+            encoding_type=encoding_type,
+            opponent_type=opponent_type,
+            agent_player=None,  # Randomize which player the agent controls
+            use_dense_reward=reward_type == "dense",
         )
 
-        # Write episode using JsonWriter
-        writer.write(episode_data)
+        if expert_type == "random":
+            expert_policy = Policy_Random()
+        elif expert_type == "heuristic":
+            expert_policy = Policy_Heuristic()
+        elif expert_type == "milestone2":
+            expert_policy = Policy_Milestone2()
+        else:
+            raise ValueError(f"Unknown expert_type: {expert_type}")
 
-        # Update statistics
-        total_return += episode_stats["episode_return"]
-        total_steps += episode_stats["episode_length"]
-        if episode_stats["agent_won"]:
-            win_count += 1
+        for episode_idx in tqdm(range(num_episodes), desc="Collecting episodes"):
+            episode_data, episode_stats = collect_episode(
+                env,
+                expert_policy,
+                episode_id=episode_idx,
+                max_steps=max_steps_per_episode,
+            )
+
+            writer.write(episode_data)
+            total_return += episode_stats["episode_return"]
+            total_steps += episode_stats["episode_length"]
+            if episode_stats["agent_won"]:
+                win_count += 1
+
+        env.close()
+    else:
+        # Use multiple worker processes; keep writing in the main process
+        ctx = mp.get_context("spawn")
+
+        with ctx.Pool(
+            processes=num_workers,
+            initializer=_init_worker,
+            initargs=(
+                encoding_type,
+                opponent_type,
+                expert_type,
+                reward_type,
+                max_steps_per_episode,
+            ),
+        ) as pool:
+            for episode_data, episode_stats in tqdm(
+                pool.imap_unordered(_collect_episode_worker, range(num_episodes)),
+                total=num_episodes,
+                desc="Collecting episodes",
+            ):
+                writer.write(episode_data)
+                total_return += episode_stats["episode_return"]
+                total_steps += episode_stats["episode_length"]
+                if episode_stats["agent_won"]:
+                    win_count += 1
 
     # Print statistics
     avg_return = total_return / num_episodes
@@ -189,8 +259,6 @@ def collect_dataset(
             f,
             indent=2,
         )
-
-    env.close()
 
 
 if __name__ == "__main__":
@@ -242,6 +310,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_steps", type=int, default=1000, help="Maximum steps per episode"
     )
+    parser.add_argument(
+        "--num_workers",
+        type=int,
+        default=1,
+        help="Number of parallel workers for data collection",
+    )
 
     args = parser.parse_args()
 
@@ -253,4 +327,5 @@ if __name__ == "__main__":
         reward_type=args.reward_type,
         output_dir=args.output_dir,
         max_steps_per_episode=args.max_steps,
+        num_workers=args.num_workers,
     )
