@@ -8,8 +8,6 @@ from misc.state_encoding import encode_handcrafted_state, encode_onehot_state
 
 
 class BCPolicyNet(nn.Module):
-    """Mirror of the training-time policy network."""
-
     def __init__(self, obs_dim: int, hidden_layers: Sequence[int], action_dim: int):
         super().__init__()
         layers = []
@@ -21,6 +19,7 @@ class BCPolicyNet(nn.Module):
             last = width
 
         layers.append(nn.Linear(last, action_dim))
+
         self.model = nn.Sequential(*layers)
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
@@ -39,11 +38,9 @@ class Policy_BC:
         self.device = torch.device("cpu" if device == "auto" else device)
 
         ckpt = self._resolve_checkpoint_path(checkpoint_path)
+
         if not ckpt.exists():
-            raise FileNotFoundError(
-                f"Checkpoint not found at {checkpoint_path}. "
-                "Provide a valid path from train_bc.py outputs."
-            )
+            raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}.")
 
         checkpoint = torch.load(str(ckpt), map_location=self.device)
         metadata = (
@@ -59,32 +56,31 @@ class Policy_BC:
         state_dict = (
             checkpoint.get("model_state_dict") if isinstance(checkpoint, dict) else None
         )
+
         if state_dict is None:
-            raise ValueError(
-                "Torch BC checkpoint is missing 'model_state_dict'. "
-                "Ensure the model was trained with the updated train_bc.py."
-            )
+            raise ValueError("Torch BC checkpoint is missing 'model_state_dict'")
 
         self.model = BCPolicyNet(
             obs_dim=obs_dim,
             hidden_layers=hidden_layers,
             action_dim=self.max_actions,
         )
+
         self.model.load_state_dict(state_dict)
         self.model.to(self.device)
         self.model.eval()
 
     @staticmethod
     def _resolve_checkpoint_path(path_str: str) -> Path:
-        """Allow passing either a file or a directory containing bc_epoch_*.pt."""
         ckpt_path = Path(path_str)
 
         if ckpt_path.is_dir():
             candidates = sorted(
-                ckpt_path.glob("bc_epoch_*.pt"),
+                ckpt_path.glob("model_epoch_*.pt"),
                 key=lambda p: p.stat().st_mtime,
                 reverse=True,
             )
+
             if candidates:
                 return candidates[0]
 
@@ -131,7 +127,6 @@ class Policy_BC:
         candidate = (dice_idx, goti_idx)
 
         if candidate not in action_space:
-            # Safety fallback to first valid action
             return action_space[0]
 
         return candidate

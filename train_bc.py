@@ -1,127 +1,17 @@
 import argparse
 import json
-import random
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
-import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, IterableDataset, get_worker_info
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-ACTION_DIM = 12  # 3 dice rolls × 4 pieces
+from misc.utils import OfflineTransitionDataset, save_checkpoint
+from policies.policy_bc import BCPolicyNet
 
-
-def count_dataset_samples(data_dir: Path) -> Tuple[int, int]:
-    """Lightweight pass to report number of transitions and episodes."""
-    total_samples = 0
-    total_episodes = 0
-
-    for json_file in data_dir.glob("*.json"):
-        if json_file.name == "dataset_info.json":
-            continue
-
-        try:
-            with open(json_file, "r") as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    data = json.loads(line)
-                    num_transitions = len(data.get("actions", []))
-                    total_samples += num_transitions
-                    total_episodes += 1
-        except Exception as e:
-            print(f"Warning: Could not read {json_file}: {e}")
-
-    return total_samples, total_episodes
-
-
-class OfflineTransitionDataset(IterableDataset):
-    """Stream transitions from RLlib-style JSON episode dumps."""
-
-    def __init__(self, json_files: Sequence[Path], obs_dim: int):
-        self.json_files = [Path(p) for p in json_files]
-        self.obs_dim = obs_dim
-
-    def _iter_file(self, path: Path) -> Iterable[Tuple[torch.Tensor, torch.Tensor]]:
-        with open(path, "r") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                episode = json.loads(line)
-                obs_list = episode.get("obs", [])
-                actions = episode.get("actions", [])
-
-                for obs, action in zip(obs_list, actions):
-                    obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)
-                    if obs_arr.shape[0] != self.obs_dim:
-                        raise ValueError(
-                            f"Observation dim mismatch: expected {self.obs_dim}, "
-                            f"got {obs_arr.shape[0]} from {path}"
-                        )
-
-                    yield (
-                        torch.from_numpy(obs_arr),
-                        torch.tensor(int(action), dtype=torch.long),
-                    )
-
-    def __iter__(self):
-        worker = get_worker_info()
-
-        if worker is None:
-            files = list(self.json_files)
-        else:
-            files = list(self.json_files[worker.id :: worker.num_workers])
-
-        rng = random.Random()
-        rng.seed(torch.initial_seed() % 2**32)
-        rng.shuffle(files)
-
-        for path in files:
-            yield from self._iter_file(path)
-
-
-class BCPolicyNet(nn.Module):
-    """Simple MLP policy for discrete behavior cloning."""
-
-    def __init__(self, obs_dim: int, hidden_layers: Sequence[int], action_dim: int):
-        super().__init__()
-        layers: List[nn.Module] = []
-        last = obs_dim
-
-        for width in hidden_layers:
-            layers.append(nn.Linear(last, width))
-            layers.append(nn.ReLU())
-            last = width
-
-        layers.append(nn.Linear(last, action_dim))
-        self.model = nn.Sequential(*layers)
-
-    def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        return self.model(obs)
-
-
-def save_checkpoint(
-    output_dir: Path,
-    epoch: int,
-    model: nn.Module,
-    optimizer: torch.optim.Optimizer,
-    metadata: dict,
-) -> Path:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    ckpt_path = output_dir / f"bc_epoch_{epoch:05d}.pt"
-
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "metadata": metadata,
-        },
-        ckpt_path,
-    )
-
-    return ckpt_path
+ACTION_DIM = 12
 
 
 def train_bc(
@@ -158,14 +48,9 @@ def train_bc(
         else ("cuda" if torch.cuda.is_available() else "cpu")
     )
 
-    num_samples, num_episodes = count_dataset_samples(data_path)
-
     print(f"Training BC (Torch) on data from: {data_path}")
     print(f"Encoding type: {encoding_type}")
     print(f"Observation dim: {obs_dim}, Action dim: {ACTION_DIM}")
-    print(f"Total samples: {num_samples}, Total episodes: {num_episodes}")
-    if num_episodes > 0:
-        print(f"Average episode length: {num_samples / num_episodes:.2f}")
 
     print("\nModel/optimizer config:")
     print(f"  Hidden layers: {hidden_layers}")
@@ -266,13 +151,16 @@ def train_bc(
     )
 
     history_path = output_path / "loss_history.jsonl"
+
     with open(history_path, "w") as f:
         for entry in loss_history:
             f.write(json.dumps(entry) + "\n")
 
     print("\nTraining complete!")
+
     if best_checkpoint:
         print(f"Best checkpoint saved to: {best_checkpoint}")
+
     print(f"Final checkpoint saved to: {final_checkpoint}")
     print(f"Loss history logged to: {history_path}")
     print(f"Best loss achieved: {best_loss:.6f}")
