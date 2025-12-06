@@ -114,6 +114,23 @@ class Policy_BC:
 
         return masked
 
+    def get_action_from_ted_step(self, ted_step: dict, action_space):
+        if ted_step is None or "observation" not in ted_step:
+            raise ValueError("TED step must contain an 'observation' entry.")
+
+        obs = np.asarray(ted_step["observation"], dtype=np.float32)
+        logits = self._compute_logits(obs)
+        masked_logits = self._mask_logits(logits, action_space)
+        action_int = int(np.argmax(masked_logits))
+
+        dice_idx, goti_idx = divmod(action_int, 4)
+        candidate = (dice_idx, goti_idx)
+
+        if candidate not in action_space:
+            return action_space[0]
+
+        return candidate
+
     def get_action(self, state, action_space):
         if not action_space:
             return None

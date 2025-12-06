@@ -77,19 +77,11 @@ def _collect_episode_worker(episode_id):
 
 
 def collect_episode(env, policy, episode_id, max_steps=1000):
-    observations = []
-    actions = []
-    rewards = []
-    dones = []
-    infos = []
+    # TorchRL Episode Data (TED) style: data for time t at root, time t+1 under "next".
+    steps = []
 
     obs, info = env.reset()
-    observations.append(obs.tolist())
-    infos.append(
-        {"action_mask": info["action_mask"].tolist() if "action_mask" in info else None}
-    )
-
-    terminated = False
+    terminated = False  # state before the first step (reset)
     truncated = False
     step_count = 0
 
@@ -123,44 +115,58 @@ def collect_episode(env, policy, episode_id, max_steps=1000):
                     action = valid_actions[0] if len(valid_actions) > 0 else 0
 
         # Take action
-        next_obs, reward, terminated, truncated, info = env.step(action)
+        next_obs, reward, next_terminated, next_truncated, next_info = env.step(action)
 
-        # Store transition
-        actions.append(int(action))
-        rewards.append(float(reward))
-        observations.append(next_obs.tolist())
-        dones.append(bool(terminated or truncated))
-        infos.append(
-            {
-                "action_mask": info["action_mask"].tolist()
-                if "action_mask" in info
-                else None,
+        step_entry = {
+            "t": step_count,
+            "observation": obs.tolist(),
+            "action": int(action),
+            "terminated": bool(terminated),
+            "truncated": bool(truncated),
+            "done": bool(terminated or truncated),
+            "info": {
+                "action_mask": action_mask.tolist()
+                if hasattr(action_mask, "tolist")
+                else list(action_mask),
                 "agent_won": info.get("agent_won", False),
-            }
-        )
+            },
+            "next": {
+                "observation": next_obs.tolist(),
+                "reward": float(reward),
+                "terminated": bool(next_terminated),
+                "truncated": bool(next_truncated),
+                "done": bool(next_terminated or next_truncated),
+                "info": {
+                    "action_mask": next_info["action_mask"].tolist()
+                    if "action_mask" in next_info
+                    else None,
+                    "agent_won": next_info.get("agent_won", False),
+                },
+            },
+        }
 
+        steps.append(step_entry)
+
+        # Advance time step: content under "next" becomes root at t+1
         obs = next_obs
+        info = next_info
+        terminated = next_terminated
+        truncated = next_truncated
         step_count += 1
 
-    timesteps = list(range(len(actions)))
-
     episode_data = {
-        "obs": observations[:-1],
-        "new_obs": observations[1:],
-        "actions": actions,
-        "rewards": rewards,
-        "dones": dones,
-        "infos": infos[1:],
-        "eps_id": [episode_id] * len(actions),
-        "agent_index": [0] * len(actions),
-        "unroll_id": [episode_id] * len(actions),
-        "t": timesteps,
+        "steps": steps,
+        "eps_id": episode_id,
+        "agent_index": 0,
+        "unroll_id": episode_id,
     }
 
     episode_stats = {
         "episode_length": step_count,
-        "episode_return": sum(rewards),
-        "agent_won": infos[-1].get("agent_won", False) if infos else False,
+        "episode_return": sum(s["next"]["reward"] for s in steps),
+        "agent_won": steps[-1]["next"]["info"].get("agent_won", False)
+        if steps
+        else False,
     }
 
     return episode_data, episode_stats
