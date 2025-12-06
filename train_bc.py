@@ -122,7 +122,7 @@ def train_bc(
     loss_module = BCLossModule(model=model, criterion=criterion)
 
     logger = get_logger(
-        "tensorboard",
+        "stdout",
         experiment_name="bc_trainer",
         logger_name="bc_trainer",
         log_dir=output_path / "logs",
@@ -218,7 +218,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_iterations",
         type=int,
-        default=100,
+        default=10,
         help="Number of training epochs",
     )
     parser.add_argument(

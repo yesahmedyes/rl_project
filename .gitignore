@@ -24,3 +24,5 @@ logs/
 # Jupyter
 .ipynb_checkpoints/
 
+bc_trainer/
+
