@@ -60,6 +60,7 @@ def train_bc(
     eval_env_type="heuristic",
     output_dir="bc_results",
     model_layers=None,
+    num_gpus=1,
 ):  # Initialize Ray
     if not ray.is_initialized():
         ray.init()
@@ -118,6 +119,9 @@ def train_bc(
     # Configure model architecture
     hidden_layers = model_layers or [256, 256]
     config.model.update({"fcnet_hiddens": hidden_layers})
+
+    # Request GPU resources if available
+    config.resources(num_gpus=num_gpus)
 
     # Set training parameters
     config.training(
@@ -265,6 +269,13 @@ if __name__ == "__main__":
         help="JSON list of hidden sizes",
     )
 
+    parser.add_argument(
+        "--num_gpus",
+        type=int,
+        default=1,
+        help="Number of GPUs to allocate to the trainer",
+    )
+
     args = parser.parse_args()
 
     train_bc(
@@ -274,4 +285,5 @@ if __name__ == "__main__":
         checkpoint_freq=args.checkpoint_freq,
         output_dir=args.output_dir,
         model_layers=args.model_layers,
+        num_gpus=args.num_gpus,
     )

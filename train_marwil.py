@@ -62,6 +62,7 @@ def train_marwil(
     beta=1.0,
     gamma=0.99,
     model_layers=None,
+    num_gpus=1,
 ):
     if not ray.is_initialized():
         ray.init()
@@ -115,6 +116,9 @@ def train_marwil(
 
     hidden_layers = model_layers or [256, 256]
     config.model.update({"fcnet_hiddens": hidden_layers})
+
+    # Request GPU resources if available
+    config.resources(num_gpus=num_gpus)
 
     config.training(
         lr=learning_rate,
@@ -304,6 +308,13 @@ if __name__ == "__main__":
         help="JSON list of hidden sizes",
     )
 
+    parser.add_argument(
+        "--num_gpus",
+        type=int,
+        default=1,
+        help="Number of GPUs to allocate to the trainer",
+    )
+
     args = parser.parse_args()
 
     train_marwil(
@@ -317,4 +328,5 @@ if __name__ == "__main__":
         beta=args.beta,
         gamma=args.gamma,
         model_layers=args.model_layers,
+        num_gpus=args.num_gpus,
     )

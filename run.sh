@@ -15,6 +15,7 @@ NUM_ITERS=10000
 CHECKPOINT_FREQ=1000
 NUM_GAMES=1000      # eval games per opponent
 DEVICE="cuda:1"
+NUM_GPUS=1
 REWARD_TYPE="sparse"
 
 DATA_ROOT="$PROJECT_ROOT/offline_data"
@@ -61,7 +62,8 @@ python3 "$PROJECT_ROOT/train_bc.py" \
   --encoding_type "$ENCODING_TYPE" \
   --num_iterations "$NUM_ITERS" \
   --checkpoint_freq "$CHECKPOINT_FREQ" \
-  --output_dir "$RESULTS_DIR" >"$TRAIN_LOG" 2>&1
+  --output_dir "$RESULTS_DIR" \
+  --num_gpus "$NUM_GPUS" >"$TRAIN_LOG" 2>&1
 
 CKPT_PATH="$(grep -oE 'Final checkpoint saved to:.*' "$TRAIN_LOG" | awk -F': ' '{print $2}' | tail -1)"
 if [[ -z "$CKPT_PATH" ]]; then

@@ -65,6 +65,7 @@ def train_cql(
     gamma=0.99,
     tau=0.005,
     model_layers=None,
+    num_gpus=1,
 ):
     if not ray.is_initialized():
         ray.init()
@@ -127,6 +128,9 @@ def train_cql(
         config.policy_model_config, dict
     ):
         config.policy_model_config.update({"fcnet_hiddens": hidden_layers})
+
+    # Request GPU resources if available
+    config.resources(num_gpus=num_gpus)
 
     config.rollouts(num_rollout_workers=0)
 
@@ -347,6 +351,13 @@ if __name__ == "__main__":
         help="JSON list of hidden sizes",
     )
 
+    parser.add_argument(
+        "--num_gpus",
+        type=int,
+        default=1,
+        help="Number of GPUs to allocate to the trainer",
+    )
+
     args = parser.parse_args()
 
     train_cql(
@@ -363,4 +374,5 @@ if __name__ == "__main__":
         gamma=args.gamma,
         tau=args.tau,
         model_layers=args.model_layers,
+        num_gpus=args.num_gpus,
     )
