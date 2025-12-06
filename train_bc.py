@@ -17,14 +17,14 @@ ACTION_DIM = 12
 def train_bc(
     data_dir: str,
     encoding_type: str = "handcrafted",
-    num_iterations: int = 10,
-    checkpoint_freq: int = 5,
-    output_dir: str = "bc_results",
+    num_iterations: int = 1000,
+    checkpoint_freq: int = 100,
+    output_dir: str = "results/bc",
     model_layers: Optional[Sequence[int]] = None,
-    batch_size: int = 256,
+    batch_size: int = 16384,
     lr: float = 1e-4,
     weight_decay: float = 0.0,
-    num_workers: int = 0,
+    num_workers: int = 16,
     device: Optional[str] = None,
 ):
     data_path = Path(data_dir)
@@ -189,13 +189,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_iterations",
         type=int,
-        default=1000,
+        default=100,
         help="Number of training epochs",
     )
     parser.add_argument(
         "--checkpoint_freq",
         type=int,
-        default=100,
+        default=1,
         help="Epoch interval for checkpointing",
     )
     parser.add_argument(
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=256,
+        default=1024,
         help="Batch size for training",
     )
     parser.add_argument(
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_decay",
         type=float,
-        default=0.0,
+        default=1e-5,
         help="L2 weight decay",
     )
     parser.add_argument(
