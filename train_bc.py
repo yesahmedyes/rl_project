@@ -189,19 +189,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_iterations",
         type=int,
-        default=10,
+        default=1000,
         help="Number of training epochs",
     )
     parser.add_argument(
         "--checkpoint_freq",
         type=int,
-        default=5,
+        default=100,
         help="Epoch interval for checkpointing",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="bc_results",
+        default="results/bc",
         help="Output directory for checkpoints and results",
     )
     parser.add_argument(
@@ -231,7 +231,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_workers",
         type=int,
-        default=0,
+        default=16,
         help="Number of dataloader workers",
     )
     parser.add_argument(

@@ -314,7 +314,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Collect offline dataset for Ludo")
 
     parser.add_argument(
-        "--num_episodes", type=int, default=1000, help="Number of episodes to collect"
+        "--num_episodes", type=int, default=10000, help="Number of episodes to collect"
     )
 
     parser.add_argument(
@@ -329,7 +329,7 @@ if __name__ == "__main__":
         "--opponent_types",
         type=str,
         nargs="+",
-        default=["heuristic"],
+        default=["random", "heuristic", "milestone2"],
         choices=["random", "heuristic", "milestone2"],
         help="Opponent policy types (space separated)",
     )
@@ -363,7 +363,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_workers",
         type=int,
-        default=1,
+        default=48,
         help="Number of parallel workers for data collection",
     )
 

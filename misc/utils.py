@@ -19,22 +19,30 @@ class OfflineTransitionDataset(IterableDataset):
                 if not line.strip():
                     continue
 
-                episode = json.loads(line)
-                obs_list = episode.get("obs", [])
-                actions = episode.get("actions", [])
+                parsed = json.loads(line)
+                episodes = parsed if isinstance(parsed, list) else [parsed]
 
-                for obs, action in zip(obs_list, actions):
-                    obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)
-                    if obs_arr.shape[0] != self.obs_dim:
+                for episode in episodes:
+                    if not isinstance(episode, dict):
                         raise ValueError(
-                            f"Observation dim mismatch: expected {self.obs_dim}, "
-                            f"got {obs_arr.shape[0]} from {path}"
+                            f"Episode entry must be a dict, got {type(episode)}"
                         )
 
-                    yield (
-                        torch.from_numpy(obs_arr),
-                        torch.tensor(int(action), dtype=torch.long),
-                    )
+                    obs_list = episode.get("obs", [])
+                    actions = episode.get("actions", [])
+
+                    for obs, action in zip(obs_list, actions):
+                        obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)
+                        if obs_arr.shape[0] != self.obs_dim:
+                            raise ValueError(
+                                f"Observation dim mismatch: expected {self.obs_dim}, "
+                                f"got {obs_arr.shape[0]} from {path}"
+                            )
+
+                        yield (
+                            torch.from_numpy(obs_arr),
+                            torch.tensor(int(action), dtype=torch.long),
+                        )
 
     def __iter__(self):
         worker = get_worker_info()
