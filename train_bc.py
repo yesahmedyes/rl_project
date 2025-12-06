@@ -65,6 +65,8 @@ def train_bc(
 
     # Get data path
     data_path = Path(data_dir)
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     if not data_path.exists():
         raise ValueError(f"Data directory does not exist: {data_path}")
@@ -149,6 +151,7 @@ def train_bc(
 
     # Training loop
     best_loss = float("inf")
+    loss_history = []
 
     for iteration in range(num_iterations):
         result = algo.train()
@@ -167,6 +170,13 @@ def train_bc(
             if loss < best_loss:
                 best_loss = loss
                 print("  New best loss!")
+            loss_history.append(
+                {
+                    "iteration": iteration + 1,
+                    "loss": float(loss),
+                    "best_loss": float(best_loss),
+                }
+            )
 
         # Print other relevant metrics
         if "learner" in info:
@@ -176,16 +186,23 @@ def train_bc(
 
         # Save checkpoint
         if (iteration + 1) % checkpoint_freq == 0:
-            checkpoint_obj = algo.save(checkpoint_dir=output_dir)
+            checkpoint_obj = algo.save(checkpoint_dir=str(output_path))
             checkpoint_path = checkpoint_to_path(checkpoint_obj)
             print(f"  Checkpoint saved to: {checkpoint_path}")
 
     # Save final checkpoint
-    final_checkpoint_obj = algo.save(checkpoint_dir=output_dir)
+    final_checkpoint_obj = algo.save(checkpoint_dir=str(output_path))
     final_checkpoint_path = checkpoint_to_path(final_checkpoint_obj)
+    history_path = output_path / "loss_history.jsonl"
+
+    with open(history_path, "w") as f:
+        for entry in loss_history:
+            f.write(json.dumps(entry) + "\n")
+
     print("\nTraining complete!")
     print(f"Final checkpoint saved to: {final_checkpoint_path}")
     print(f"Best loss achieved: {best_loss:.6f}")
+    print(f"Loss history logged to: {history_path}")
 
     # Cleanup
     algo.stop()
