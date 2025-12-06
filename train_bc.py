@@ -1,47 +1,32 @@
-import numpy as np
 import argparse
-from pathlib import Path
-import gymnasium as gym
-from ray.rllib.algorithms.bc import BCConfig
-import ray
 import json
+import random
+from pathlib import Path
+from typing import Iterable, List, Optional, Sequence, Tuple
+
+import numpy as np
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, IterableDataset, get_worker_info
+from tqdm import tqdm
+
+ACTION_DIM = 12  # 3 dice rolls × 4 pieces
 
 
-def checkpoint_to_path(ckpt_obj):
-    """Return a filesystem path string for a Ray checkpoint-like object."""
-    if isinstance(ckpt_obj, str):
-        return ckpt_obj
-
-    # Handle TrainingResult(checkpoint=...) wrapper
-    inner_ckpt = getattr(ckpt_obj, "checkpoint", None)
-    if inner_ckpt is not None:
-        ckpt_obj = inner_ckpt
-
-    path_attr = getattr(ckpt_obj, "path", None)
-    if path_attr:
-        return str(path_attr)
-
-    if hasattr(ckpt_obj, "to_directory"):
-        try:
-            return ckpt_obj.to_directory()
-        except Exception:
-            pass
-
-    return str(ckpt_obj)
-
-
-def count_dataset_samples(data_dir):
-    data_path = Path(data_dir)
+def count_dataset_samples(data_dir: Path) -> Tuple[int, int]:
+    """Lightweight pass to report number of transitions and episodes."""
     total_samples = 0
     total_episodes = 0
 
-    for json_file in data_path.glob("*.json"):
+    for json_file in data_dir.glob("*.json"):
         if json_file.name == "dataset_info.json":
             continue
 
         try:
             with open(json_file, "r") as f:
                 for line in f:
+                    if not line.strip():
+                        continue
                     data = json.loads(line)
                     num_transitions = len(data.get("actions", []))
                     total_samples += num_transitions
@@ -52,178 +37,252 @@ def count_dataset_samples(data_dir):
     return total_samples, total_episodes
 
 
-def train_bc(
-    data_dir,
-    encoding_type="handcrafted",
-    num_iterations=100,
-    checkpoint_freq=10,
-    eval_env_type="heuristic",
-    output_dir="bc_results",
-    model_layers=None,
-    num_gpus=1,
-):  # Initialize Ray
-    if not ray.is_initialized():
-        ray.init()
+class OfflineTransitionDataset(IterableDataset):
+    """Stream transitions from RLlib-style JSON episode dumps."""
 
-    # Get data path
+    def __init__(self, json_files: Sequence[Path], obs_dim: int):
+        self.json_files = [Path(p) for p in json_files]
+        self.obs_dim = obs_dim
+
+    def _iter_file(self, path: Path) -> Iterable[Tuple[torch.Tensor, torch.Tensor]]:
+        with open(path, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                episode = json.loads(line)
+                obs_list = episode.get("obs", [])
+                actions = episode.get("actions", [])
+
+                for obs, action in zip(obs_list, actions):
+                    obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)
+                    if obs_arr.shape[0] != self.obs_dim:
+                        raise ValueError(
+                            f"Observation dim mismatch: expected {self.obs_dim}, "
+                            f"got {obs_arr.shape[0]} from {path}"
+                        )
+
+                    yield (
+                        torch.from_numpy(obs_arr),
+                        torch.tensor(int(action), dtype=torch.long),
+                    )
+
+    def __iter__(self):
+        worker = get_worker_info()
+
+        if worker is None:
+            files = list(self.json_files)
+        else:
+            files = list(self.json_files[worker.id :: worker.num_workers])
+
+        rng = random.Random()
+        rng.seed(torch.initial_seed() % 2**32)
+        rng.shuffle(files)
+
+        for path in files:
+            yield from self._iter_file(path)
+
+
+class BCPolicyNet(nn.Module):
+    """Simple MLP policy for discrete behavior cloning."""
+
+    def __init__(self, obs_dim: int, hidden_layers: Sequence[int], action_dim: int):
+        super().__init__()
+        layers: List[nn.Module] = []
+        last = obs_dim
+
+        for width in hidden_layers:
+            layers.append(nn.Linear(last, width))
+            layers.append(nn.ReLU())
+            last = width
+
+        layers.append(nn.Linear(last, action_dim))
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.model(obs)
+
+
+def save_checkpoint(
+    output_dir: Path,
+    epoch: int,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    metadata: dict,
+) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_path = output_dir / f"bc_epoch_{epoch:05d}.pt"
+
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "metadata": metadata,
+        },
+        ckpt_path,
+    )
+
+    return ckpt_path
+
+
+def train_bc(
+    data_dir: str,
+    encoding_type: str = "handcrafted",
+    num_iterations: int = 10,
+    checkpoint_freq: int = 5,
+    output_dir: str = "bc_results",
+    model_layers: Optional[Sequence[int]] = None,
+    batch_size: int = 256,
+    lr: float = 1e-4,
+    weight_decay: float = 0.0,
+    num_workers: int = 0,
+    device: Optional[str] = None,
+):
     data_path = Path(data_dir)
     output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
 
     if not data_path.exists():
         raise ValueError(f"Data directory does not exist: {data_path}")
 
     json_files = [
-        str(p.resolve())
-        for p in data_path.glob("*.json")
-        if p.name != "dataset_info.json"
+        p.resolve() for p in data_path.glob("*.json") if p.name != "dataset_info.json"
     ]
 
     if not json_files:
         raise ValueError(f"No episode JSON files found in {data_path}")
 
-    print(f"Training BC on data from: {data_path}")
-    print(f"Encoding type: {encoding_type}")
-
-    if encoding_type == "handcrafted":
-        observation_space = gym.spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(70,),
-            dtype=np.float32,
-        )
-    else:  # onehot
-        observation_space = gym.spaces.Box(
-            low=0.0,
-            high=1.0,
-            shape=(946,),
-            dtype=np.float32,
-        )
-
-    # Action space: 12 actions (3 dice rolls × 4 pieces)
-    action_space = gym.spaces.Discrete(12)
-
-    config = BCConfig()
-
-    config.api_stack(
-        enable_rl_module_and_learner=False,
-        enable_env_runner_and_connector_v2=False,
-    )
-
-    # Define the environment spaces
-    config.environment(
-        observation_space=observation_space,
-        action_space=action_space,
-    )
-
-    # Configure model architecture
-    hidden_layers = model_layers or [256, 256]
-    config.model.update({"fcnet_hiddens": hidden_layers})
-
-    # Request GPU resources if available
-    config.resources(num_gpus=num_gpus)
-
-    # Set training parameters
-    config.training(
-        lr=1e-4,
-        train_batch_size_per_learner=64,
-    )
-
-    config.offline_data(
-        input_=json_files,
-        dataset_num_iters_per_learner=1,
-    )
-
-    config.evaluation(
-        evaluation_interval=None,
+    obs_dim = 70 if encoding_type == "handcrafted" else 946
+    hidden_layers = list(model_layers) if model_layers else [256, 256]
+    torch_device = torch.device(
+        device
+        if device is not None
+        else ("cuda" if torch.cuda.is_available() else "cpu")
     )
 
     num_samples, num_episodes = count_dataset_samples(data_path)
 
-    print("\nDataset Statistics:")
-    print(f"  Total samples: {num_samples}")
-    print(f"  Total episodes: {num_episodes}")
-
+    print(f"Training BC (Torch) on data from: {data_path}")
+    print(f"Encoding type: {encoding_type}")
+    print(f"Observation dim: {obs_dim}, Action dim: {ACTION_DIM}")
+    print(f"Total samples: {num_samples}, Total episodes: {num_episodes}")
     if num_episodes > 0:
-        print(f"  Average episode length: {num_samples / num_episodes:.2f}")
+        print(f"Average episode length: {num_samples / num_episodes:.2f}")
 
-    print("\nBC Configuration:")
-    print(f"  Learning rate: {config.lr}")
-    print(f"  Train batch size per learner: {config.train_batch_size_per_learner}")
-    print(f"  Dataset iterations per learner: {config.dataset_num_iters_per_learner}")
-    print(f"  Number of training iterations: {num_iterations}")
-    print(f"  Model hidden sizes: {hidden_layers}")
+    print("\nModel/optimizer config:")
+    print(f"  Hidden layers: {hidden_layers}")
+    print(f"  Batch size: {batch_size}")
+    print(f"  Learning rate: {lr}")
+    print(f"  Weight decay: {weight_decay}")
+    print(f"  Device: {torch_device}")
+    print(f"  Training epochs: {num_iterations}")
+    print(f"  Checkpoint frequency: {checkpoint_freq}")
 
-    # Build the algorithm
-    algo = config.build()
+    dataset = OfflineTransitionDataset(json_files=json_files, obs_dim=obs_dim)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=torch_device.type == "cuda",
+    )
+
+    model = BCPolicyNet(
+        obs_dim=obs_dim, hidden_layers=hidden_layers, action_dim=ACTION_DIM
+    )
+    model.to(torch_device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    criterion = nn.CrossEntropyLoss()
+
+    best_loss = float("inf")
+    best_checkpoint: Optional[Path] = None
+    loss_history: List[dict] = []
+
+    metadata = {
+        "encoding_type": encoding_type,
+        "obs_dim": obs_dim,
+        "action_dim": ACTION_DIM,
+        "hidden_layers": hidden_layers,
+        "batch_size": batch_size,
+        "lr": lr,
+        "weight_decay": weight_decay,
+    }
 
     print("\nStarting training...")
 
-    # Training loop
-    best_loss = float("inf")
-    loss_history = []
+    for epoch in range(1, num_iterations + 1):
+        model.train()
+        running_loss = 0.0
+        sample_count = 0
 
-    for iteration in range(num_iterations):
-        result = algo.train()
+        progress = tqdm(dataloader, desc=f"Epoch {epoch}/{num_iterations}", leave=False)
 
-        # Extract relevant metrics
-        info = result.get("info", {})
-        learner_info = info.get("learner", {})
+        for obs_batch, action_batch in progress:
+            obs_batch = obs_batch.to(torch_device, non_blocking=True)
+            action_batch = action_batch.to(torch_device, non_blocking=True)
 
-        # Get loss from learner info
-        loss = learner_info.get("total_loss", learner_info.get("loss", None))
+            optimizer.zero_grad()
+            logits = model(obs_batch)
+            loss = criterion(logits, action_batch)
+            loss.backward()
+            optimizer.step()
 
-        print(f"\nIteration {iteration + 1}/{num_iterations}")
+            batch_size_effective = action_batch.shape[0]
+            running_loss += loss.item() * batch_size_effective
+            sample_count += batch_size_effective
 
-        if loss is not None:
-            print(f"  Loss: {loss:.6f}")
-            if loss < best_loss:
-                best_loss = loss
-                print("  New best loss!")
-            loss_history.append(
-                {
-                    "iteration": iteration + 1,
-                    "loss": float(loss),
-                    "best_loss": float(best_loss),
-                }
+            progress.set_postfix({"loss": loss.item()})
+
+        avg_loss = running_loss / max(sample_count, 1)
+        loss_history.append({"epoch": epoch, "loss": float(avg_loss)})
+
+        print(f"Epoch {epoch}/{num_iterations} - avg loss: {avg_loss:.6f}")
+
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            best_checkpoint = save_checkpoint(
+                output_dir=output_path,
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                metadata={**metadata, "best_loss": best_loss},
             )
+            print(f"  New best checkpoint -> {best_checkpoint}")
 
-        # Print other relevant metrics
-        if "learner" in info:
-            for key, value in learner_info.items():
-                if key != "total_loss" and isinstance(value, (int, float)):
-                    print(f"  {key}: {value}")
+        if epoch % checkpoint_freq == 0:
+            ckpt_path = save_checkpoint(
+                output_dir=output_path,
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                metadata={**metadata, "epoch_loss": avg_loss},
+            )
+            print(f"  Checkpoint saved to: {ckpt_path}")
 
-        # Save checkpoint
-        if (iteration + 1) % checkpoint_freq == 0:
-            checkpoint_obj = algo.save(checkpoint_dir=str(output_path))
-            checkpoint_path = checkpoint_to_path(checkpoint_obj)
-            print(f"  Checkpoint saved to: {checkpoint_path}")
+    final_checkpoint = save_checkpoint(
+        output_dir=output_path,
+        epoch=num_iterations,
+        model=model,
+        optimizer=optimizer,
+        metadata={**metadata, "final_loss": loss_history[-1]["loss"]},
+    )
 
-    # Save final checkpoint
-    final_checkpoint_obj = algo.save(checkpoint_dir=str(output_path))
-    final_checkpoint_path = checkpoint_to_path(final_checkpoint_obj)
     history_path = output_path / "loss_history.jsonl"
-
     with open(history_path, "w") as f:
         for entry in loss_history:
             f.write(json.dumps(entry) + "\n")
 
     print("\nTraining complete!")
-    print(f"Final checkpoint saved to: {final_checkpoint_path}")
-    print(f"Best loss achieved: {best_loss:.6f}")
+    if best_checkpoint:
+        print(f"Best checkpoint saved to: {best_checkpoint}")
+    print(f"Final checkpoint saved to: {final_checkpoint}")
     print(f"Loss history logged to: {history_path}")
+    print(f"Best loss achieved: {best_loss:.6f}")
 
-    # Cleanup
-    algo.stop()
-    ray.shutdown()
-
-    return final_checkpoint_path
+    return str(final_checkpoint)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train Behavior Cloning model using Ray RLlib"
+        description="Train Behavior Cloning model using PyTorch (no Ray/RLlib dependency)"
     )
 
     parser.add_argument(
@@ -232,7 +291,6 @@ if __name__ == "__main__":
         required=True,
         help="Directory containing offline data",
     )
-
     parser.add_argument(
         "--encoding_type",
         type=str,
@@ -240,40 +298,59 @@ if __name__ == "__main__":
         choices=["handcrafted", "onehot"],
         help="State encoding type",
     )
-
     parser.add_argument(
         "--num_iterations",
         type=int,
-        default=100,
-        help="Number of training iterations",
+        default=10,
+        help="Number of training epochs",
     )
-
     parser.add_argument(
         "--checkpoint_freq",
         type=int,
-        default=10,
-        help="Checkpoint frequency",
+        default=5,
+        help="Epoch interval for checkpointing",
     )
-
     parser.add_argument(
         "--output_dir",
         type=str,
         default="bc_results",
         help="Output directory for checkpoints and results",
     )
-
     parser.add_argument(
         "--model_layers",
         type=json.loads,
         default="[256, 256]",
-        help="JSON list of hidden sizes",
+        help='JSON list of hidden sizes, e.g. "[256, 256]"',
     )
-
     parser.add_argument(
-        "--num_gpus",
+        "--batch_size",
         type=int,
-        default=1,
-        help="Number of GPUs to allocate to the trainer",
+        default=256,
+        help="Batch size for training",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=1e-4,
+        help="Learning rate",
+    )
+    parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=0.0,
+        help="L2 weight decay",
+    )
+    parser.add_argument(
+        "--num_workers",
+        type=int,
+        default=0,
+        help="Number of dataloader workers",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help='Torch device string, e.g. "cuda:0" or "cpu". Defaults to auto.',
     )
 
     args = parser.parse_args()
@@ -285,5 +362,9 @@ if __name__ == "__main__":
         checkpoint_freq=args.checkpoint_freq,
         output_dir=args.output_dir,
         model_layers=args.model_layers,
-        num_gpus=args.num_gpus,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        num_workers=args.num_workers,
+        device=args.device,
     )

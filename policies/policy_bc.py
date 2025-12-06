@@ -1,12 +1,30 @@
 import numpy as np
 import torch
-import ray
-import gymnasium as gym
 from pathlib import Path
-import re
-from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.bc import BCConfig
+from torch import nn
+from typing import Sequence
+
 from misc.state_encoding import encode_handcrafted_state, encode_onehot_state
+
+
+class BCPolicyNet(nn.Module):
+    """Mirror of the training-time policy network."""
+
+    def __init__(self, obs_dim: int, hidden_layers: Sequence[int], action_dim: int):
+        super().__init__()
+        layers = []
+        last = obs_dim
+
+        for width in hidden_layers:
+            layers.append(nn.Linear(last, width))
+            layers.append(nn.ReLU())
+            last = width
+
+        layers.append(nn.Linear(last, action_dim))
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.model(obs)
 
 
 class Policy_BC:
@@ -20,136 +38,57 @@ class Policy_BC:
         self.max_actions = 12
         self.device = torch.device("cpu" if device == "auto" else device)
 
-        ckpt = self._normalize_checkpoint_path(checkpoint_path)
-
+        ckpt = self._resolve_checkpoint_path(checkpoint_path)
         if not ckpt.exists():
             raise FileNotFoundError(
                 f"Checkpoint not found at {checkpoint_path}. "
                 "Provide a valid path from train_bc.py outputs."
             )
 
-        if not ray.is_initialized():
-            ray.init(
-                include_dashboard=False,
-                ignore_reinit_error=True,
-                log_to_driver=False,
-            )
-
-        ckpt_dir = ckpt if ckpt.is_dir() else ckpt.parent
-
-        try:
-            self.algo = Algorithm.from_checkpoint(str(ckpt_dir))
-        except ValueError:
-            config = BCConfig()
-            config.api_stack(
-                enable_rl_module_and_learner=False,
-                enable_env_runner_and_connector_v2=False,
-            )
-
-            if self.encoding_type == "handcrafted":
-                observation_space = gym.spaces.Box(
-                    low=-np.inf,
-                    high=np.inf,
-                    shape=(70,),
-                    dtype=np.float32,
-                )
-            elif self.encoding_type == "onehot":
-                observation_space = gym.spaces.Box(
-                    low=0.0,
-                    high=1.0,
-                    shape=(946,),
-                    dtype=np.float32,
-                )
-            else:
-                raise ValueError(f"Unknown encoding type: {self.encoding_type}")
-
-            action_space = gym.spaces.Discrete(12)
-
-            config.environment(
-                observation_space=observation_space,
-                action_space=action_space,
-            )
-
-            config.training(
-                lr=1e-4,
-                train_batch_size_per_learner=64,
-            )
-
-            config.offline_data(
-                input_="sampler",
-                dataset_num_iters_per_learner=1,
-            )
-
-            self.algo = config.build()
-
-            try:
-                self.algo.restore(str(ckpt_dir))
-            except ValueError:
-                try:
-                    policy_state = torch.load(str(ckpt), map_location=self.device)
-                except Exception:
-                    policy_state = torch.load(
-                        str(ckpt), map_location=self.device, weights_only=False
-                    )
-
-                policy = self.algo.get_policy()
-
-                if hasattr(policy, "import_state"):
-                    policy.import_state(policy_state)
-                elif hasattr(policy, "set_state"):
-                    policy.set_state(policy_state)
-                else:
-                    raise RuntimeError(
-                        "Policy checkpoint could not be loaded: no import_state/set_state"
-                    )
-
-        self.policy = self.algo.get_policy()
-
-        # Ensure model sits on the requested device
-        if hasattr(self.policy, "model") and hasattr(self.policy.model, "to"):
-            self.policy.model.to(self.device)
-            self.policy.model.eval()
-
-    @staticmethod
-    def _find_latest_checkpoint(base_dir: Path):
-        if not base_dir.exists() or not base_dir.is_dir():
-            return None
-
-        candidates = sorted(
-            base_dir.glob("checkpoint*"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
+        checkpoint = torch.load(str(ckpt), map_location=self.device)
+        metadata = (
+            checkpoint.get("metadata", {}) if isinstance(checkpoint, dict) else {}
         )
 
-        return candidates[0] if candidates else None
+        obs_dim = metadata.get("obs_dim")
+        hidden_layers = metadata.get("hidden_layers", [256, 256])
+
+        if obs_dim is None:
+            obs_dim = 70 if encoding_type == "handcrafted" else 946
+
+        state_dict = (
+            checkpoint.get("model_state_dict") if isinstance(checkpoint, dict) else None
+        )
+        if state_dict is None:
+            raise ValueError(
+                "Torch BC checkpoint is missing 'model_state_dict'. "
+                "Ensure the model was trained with the updated train_bc.py."
+            )
+
+        self.model = BCPolicyNet(
+            obs_dim=obs_dim,
+            hidden_layers=hidden_layers,
+            action_dim=self.max_actions,
+        )
+        self.model.load_state_dict(state_dict)
+        self.model.to(self.device)
+        self.model.eval()
 
     @staticmethod
-    def _normalize_checkpoint_path(path_str: str) -> Path:
-        """Handle raw paths and Ray result reprs like TrainingResult(checkpoint=...)."""
-        ckpt = Path(path_str)
+    def _resolve_checkpoint_path(path_str: str) -> Path:
+        """Allow passing either a file or a directory containing bc_epoch_*.pt."""
+        ckpt_path = Path(path_str)
 
-        if ckpt.exists():
-            return ckpt
+        if ckpt_path.is_dir():
+            candidates = sorted(
+                ckpt_path.glob("bc_epoch_*.pt"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                return candidates[0]
 
-        # Try to extract path=... from Ray repr strings
-        match = re.search(r"path=([^,\\s)]+)", path_str)
-        if match:
-            candidate = Path(match.group(1))
-
-            if candidate.exists():
-                return candidate
-
-            latest = Policy_BC._find_latest_checkpoint(candidate)
-            if latest:
-                return latest
-
-        # If given a directory, try to pick the newest checkpoint inside
-        if ckpt.is_dir():
-            latest = Policy_BC._find_latest_checkpoint(ckpt)
-            if latest:
-                return latest
-
-        return ckpt
+        return ckpt_path
 
     def _encode_state(self, state):
         if self.encoding_type == "handcrafted":
@@ -165,10 +104,7 @@ class Policy_BC:
         obs_tensor = torch.as_tensor(obs, device=self.device).unsqueeze(0)
 
         with torch.no_grad():
-            logits, _ = self.policy.model({"obs": obs_tensor}, [], None)
-
-        if isinstance(logits, (tuple, list)):
-            logits = logits[0]
+            logits = self.model(obs_tensor)
 
         return logits.squeeze(0).detach().cpu().numpy()
 
@@ -187,14 +123,9 @@ class Policy_BC:
             return None
 
         obs = self._encode_state(state)
-
-        try:
-            logits = self._compute_logits(obs)
-            masked_logits = self._mask_logits(logits, action_space)
-            action_int = int(np.argmax(masked_logits))
-        except Exception:
-            # Fallback to RLlib's helper if direct logits computation fails
-            action_int, _, _ = self.algo.compute_single_action(obs, explore=False)
+        logits = self._compute_logits(obs)
+        masked_logits = self._mask_logits(logits, action_space)
+        action_int = int(np.argmax(masked_logits))
 
         dice_idx, goti_idx = divmod(action_int, 4)
         candidate = (dice_idx, goti_idx)

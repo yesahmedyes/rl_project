@@ -5,7 +5,6 @@ import multiprocessing as mp
 import atexit
 from pathlib import Path
 from tqdm import tqdm
-from ray.rllib.offline.json_writer import JsonWriter
 from env.ludo_gym_env import LudoGymEnv
 from policies.policy_random import Policy_Random
 from policies.policy_heuristic import Policy_Heuristic
@@ -15,6 +14,21 @@ from policies.milestone2 import Policy_Milestone2
 _worker_env = None
 _worker_policy = None
 _worker_max_steps = None
+
+
+class JsonEpisodeWriter:
+    """Minimal JSON episode writer to replace Ray's JsonWriter."""
+
+    def __init__(self, output_dir: Path):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._counter = 0
+
+    def write(self, episode_data: dict):
+        path = self.output_dir / f"episode_{self._counter:06d}.json"
+        self._counter += 1
+        with path.open("w") as f:
+            f.write(json.dumps(episode_data))
 
 
 def _init_worker(encoding_type, opponent_type, expert_type, reward_type, max_steps):
@@ -163,8 +177,8 @@ def collect_dataset(
     print(f"Output directory: {output_path}")
     print(f"Workers: {num_workers}")
 
-    # Initialize RLlib JsonWriter
-    writer = JsonWriter(str(output_path))
+    # Minimal JSON writer (one file per episode)
+    writer = JsonEpisodeWriter(output_path)
 
     total_return = 0
     total_steps = 0
