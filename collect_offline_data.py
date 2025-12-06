@@ -153,7 +153,7 @@ def collect_dataset(
     # Create output directory
     output_path = (
         Path(output_dir)
-        / f"{expert_type}_{encoding_type}"
+        / f"{expert_type}_{encoding_type}_{reward_type}"
         / f"{expert_type}_vs_{opponent_type}"
     )
     output_path.mkdir(parents=True, exist_ok=True)
