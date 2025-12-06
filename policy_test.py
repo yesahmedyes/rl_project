@@ -2,6 +2,8 @@ from policies.policy_random import Policy_Random
 from policies.policy_heuristic import Policy_Heuristic
 from policies.milestone2 import Policy_Milestone2
 from policies.policy_bc import Policy_BC
+from policies.policy_cql import Policy_CQL
+from policies.policy_marwil import Policy_MARWIL
 from env.ludo import Ludo
 import argparse
 import os
@@ -55,6 +57,13 @@ if __name__ == "__main__":
         help="Encoding type used by the model",
     )
     parser.add_argument(
+        "--algo",
+        type=str,
+        default="bc",
+        choices=["bc", "cql", "marwil"],
+        help="Type of offline RL algorithm used to train the checkpoint",
+    )
+    parser.add_argument(
         "--num_games",
         type=int,
         default=1000,
@@ -81,11 +90,24 @@ if __name__ == "__main__":
     print("=" * 50)
 
     # Build the policy under test once to avoid reloading per matchup
-    test_policy = Policy_BC(
-        checkpoint_path=args.model_path,
-        encoding_type=args.encoding_type,
-        device=args.device,
-    )
+    if args.algo == "bc":
+        test_policy = Policy_BC(
+            checkpoint_path=args.model_path,
+            encoding_type=args.encoding_type,
+            device=args.device,
+        )
+    elif args.algo == "cql":
+        test_policy = Policy_CQL(
+            checkpoint_path=args.model_path,
+            encoding_type=args.encoding_type,
+            device=args.device,
+        )
+    else:
+        test_policy = Policy_MARWIL(
+            checkpoint_path=args.model_path,
+            encoding_type=args.encoding_type,
+            device=args.device,
+        )
 
     for opponent_name, opponent_policy in opponents:
         print(f"\nTesting {model_name} vs {opponent_name}:")

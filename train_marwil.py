@@ -1,18 +1,17 @@
-import numpy as np
 import argparse
-from pathlib import Path
-import gymnasium as gym
-from ray.rllib.algorithms.bc import BCConfig
-import ray
 import json
+from pathlib import Path
+
+import gymnasium as gym
+import numpy as np
+import ray
+from ray.rllib.algorithms.marwil import MARWILConfig
 
 
 def checkpoint_to_path(ckpt_obj):
-    """Return a filesystem path string for a Ray checkpoint-like object."""
     if isinstance(ckpt_obj, str):
         return ckpt_obj
 
-    # Handle TrainingResult(checkpoint=...) wrapper
     inner_ckpt = getattr(ckpt_obj, "checkpoint", None)
     if inner_ckpt is not None:
         ckpt_obj = inner_ckpt
@@ -52,19 +51,21 @@ def count_dataset_samples(data_dir):
     return total_samples, total_episodes
 
 
-def train_bc(
+def train_marwil(
     data_dir,
     encoding_type="handcrafted",
     num_iterations=100,
     checkpoint_freq=10,
-    eval_env_type="heuristic",
-    output_dir="bc_results",
+    output_dir="marwil_results",
+    learning_rate=1e-5,
+    train_batch_size=2000,
+    beta=1.0,
+    gamma=0.99,
     model_layers=None,
-):  # Initialize Ray
+):
     if not ray.is_initialized():
         ray.init()
 
-    # Get data path
     data_path = Path(data_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -81,7 +82,7 @@ def train_bc(
     if not json_files:
         raise ValueError(f"No episode JSON files found in {data_path}")
 
-    print(f"Training BC on data from: {data_path}")
+    print(f"Training MARWIL on data from: {data_path}")
     print(f"Encoding type: {encoding_type}")
 
     if encoding_type == "handcrafted":
@@ -91,7 +92,7 @@ def train_bc(
             shape=(70,),
             dtype=np.float32,
         )
-    else:  # onehot
+    else:
         observation_space = gym.spaces.Box(
             low=0.0,
             high=1.0,
@@ -99,30 +100,27 @@ def train_bc(
             dtype=np.float32,
         )
 
-    # Action space: 12 actions (3 dice rolls × 4 pieces)
     action_space = gym.spaces.Discrete(12)
 
-    config = BCConfig()
-
+    config = MARWILConfig()
     config.api_stack(
         enable_rl_module_and_learner=False,
         enable_env_runner_and_connector_v2=False,
     )
 
-    # Define the environment spaces
     config.environment(
         observation_space=observation_space,
         action_space=action_space,
     )
 
-    # Configure model architecture
     hidden_layers = model_layers or [256, 256]
     config.model.update({"fcnet_hiddens": hidden_layers})
 
-    # Set training parameters
     config.training(
-        lr=1e-4,
-        train_batch_size_per_learner=64,
+        lr=learning_rate,
+        train_batch_size_per_learner=train_batch_size,
+        beta=beta,
+        gamma=gamma,
     )
 
     config.offline_data(
@@ -130,9 +128,7 @@ def train_bc(
         dataset_num_iters_per_learner=1,
     )
 
-    config.evaluation(
-        evaluation_interval=None,
-    )
+    config.evaluation(evaluation_interval=None)
 
     num_samples, num_episodes = count_dataset_samples(data_path)
 
@@ -143,60 +139,69 @@ def train_bc(
     if num_episodes > 0:
         print(f"  Average episode length: {num_samples / num_episodes:.2f}")
 
-    print("\nBC Configuration:")
+    print("\nMARWIL Configuration:")
     print(f"  Learning rate: {config.lr}")
     print(f"  Train batch size per learner: {config.train_batch_size_per_learner}")
-    print(f"  Dataset iterations per learner: {config.dataset_num_iters_per_learner}")
+    print(f"  Beta (advantage scale): {config.beta}")
+    print(f"  Gamma: {config.gamma}")
     print(f"  Number of training iterations: {num_iterations}")
     print(f"  Model hidden sizes: {hidden_layers}")
 
-    # Build the algorithm
     algo = config.build()
 
     print("\nStarting training...")
 
-    # Training loop
     best_loss = float("inf")
     loss_history = []
 
     for iteration in range(num_iterations):
         result = algo.train()
 
-        # Extract relevant metrics
         info = result.get("info", {})
         learner_info = info.get("learner", {})
 
-        # Get loss from learner info
-        loss = learner_info.get("total_loss", learner_info.get("loss", None))
+        metrics = {}
+        if isinstance(learner_info, dict) and learner_info:
+            first_value = next(iter(learner_info.values()))
+            metrics = first_value if isinstance(first_value, dict) else learner_info
+
+        loss = metrics.get("total_loss", metrics.get("loss", None))
+        policy_loss = metrics.get("policy_loss", None)
+        vf_loss = metrics.get("vf_loss", None)
 
         print(f"\nIteration {iteration + 1}/{num_iterations}")
 
         if loss is not None:
-            print(f"  Loss: {loss:.6f}")
-            if loss < best_loss:
-                best_loss = loss
-                print("  New best loss!")
+            print(f"  Total loss: {float(loss):.6f}")
+            best_loss = min(best_loss, float(loss))
             loss_history.append(
                 {
                     "iteration": iteration + 1,
                     "loss": float(loss),
                     "best_loss": float(best_loss),
+                    "policy_loss": float(policy_loss)
+                    if policy_loss is not None
+                    else None,
+                    "vf_loss": float(vf_loss) if vf_loss is not None else None,
                 }
             )
 
-        # Print other relevant metrics
-        if "learner" in info:
-            for key, value in learner_info.items():
-                if key != "total_loss" and isinstance(value, (int, float)):
-                    print(f"  {key}: {value}")
+        if policy_loss is not None:
+            print(f"  Policy loss: {float(policy_loss):.6f}")
+        if vf_loss is not None:
+            print(f"  Value loss: {float(vf_loss):.6f}")
 
-        # Save checkpoint
+        for key, value in metrics.items():
+            if key in ("total_loss", "loss", "policy_loss", "vf_loss"):
+                continue
+            if isinstance(value, (int, float)):
+                print(f"  {key}: {value}")
+
         if (iteration + 1) % checkpoint_freq == 0:
             checkpoint_obj = algo.save(checkpoint_dir=str(output_path))
             checkpoint_path = checkpoint_to_path(checkpoint_obj)
             print(f"  Checkpoint saved to: {checkpoint_path}")
 
-    # Save final checkpoint
     final_checkpoint_obj = algo.save(checkpoint_dir=str(output_path))
     final_checkpoint_path = checkpoint_to_path(final_checkpoint_obj)
     history_path = output_path / "loss_history.jsonl"
@@ -205,12 +210,18 @@ def train_bc(
         for entry in loss_history:
             f.write(json.dumps(entry) + "\n")
 
+    best_loss_value = best_loss if best_loss < float("inf") else None
+
     print("\nTraining complete!")
     print(f"Final checkpoint saved to: {final_checkpoint_path}")
-    print(f"Best loss achieved: {best_loss:.6f}")
+
+    if best_loss_value is not None:
+        print(f"Best loss achieved: {best_loss_value:.6f}")
+    else:
+        print("Best loss achieved: N/A (loss not reported)")
+
     print(f"Loss history logged to: {history_path}")
 
-    # Cleanup
     algo.stop()
     ray.shutdown()
 
@@ -219,7 +230,7 @@ def train_bc(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train Behavior Cloning model using Ray RLlib"
+        description="Train MARWIL offline RL model using Ray RLlib (old API stack)"
     )
 
     parser.add_argument(
@@ -254,8 +265,36 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="bc_results",
+        default="marwil_results",
         help="Output directory for checkpoints and results",
+    )
+
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=1e-5,
+        help="Learning rate for MARWIL",
+    )
+
+    parser.add_argument(
+        "--train_batch_size",
+        type=int,
+        default=2000,
+        help="Train batch size per learner",
+    )
+
+    parser.add_argument(
+        "--beta",
+        type=float,
+        default=1.0,
+        help="Advantage scaling term; 0 reduces to behavior cloning",
+    )
+
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=0.99,
+        help="Discount factor",
     )
 
     parser.add_argument(
@@ -267,11 +306,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    train_bc(
+    train_marwil(
         data_dir=args.data_dir,
         encoding_type=args.encoding_type,
         num_iterations=args.num_iterations,
         checkpoint_freq=args.checkpoint_freq,
         output_dir=args.output_dir,
+        learning_rate=args.learning_rate,
+        train_batch_size=args.train_batch_size,
+        beta=args.beta,
+        gamma=args.gamma,
         model_layers=args.model_layers,
     )
