@@ -6,12 +6,54 @@ from typing import List, Optional, Sequence
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+from tensordict import TensorDict
+from torchrl.trainers import CountFramesLog, LogScalar, Trainer
+from torchrl.trainers.loggers import get_logger
 
-from misc.utils import OfflineTransitionDataset, save_checkpoint
+from misc.utils import OfflineTransitionDataset
 from policies.policy_bc import BCPolicyNet
 
 ACTION_DIM = 12
+
+
+class BCLossModule(nn.Module):
+    def __init__(self, model: nn.Module, criterion: nn.Module):
+        super().__init__()
+        self.model = model
+        self.criterion = criterion
+
+    def forward(self, batch: TensorDict):
+        logits = self.model(batch["observation"])
+        loss = self.criterion(logits, batch["action"])
+        batch.set("loss", loss.detach())
+
+        return TensorDict({"loss": loss, "logits": logits}, batch_size=batch.batch_size)
+
+
+class LossTracker:
+    def __init__(self):
+        self.history: List[float] = []
+        self.best_loss: float = float("inf")
+
+    def register(self, trainer: Trainer, name: str = "loss_tracker"):
+        trainer.register_module(self, name)
+        trainer.register_op("post_optim_log", self)
+
+    def state_dict(self):
+        return {"history": self.history, "best_loss": self.best_loss}
+
+    def load_state_dict(self, state_dict):
+        self.history = state_dict.get("history", [])
+        self.best_loss = state_dict.get("best_loss", float("inf"))
+
+    def __call__(self, batch: TensorDict):
+        if "loss" not in batch:
+            return None
+        loss_value = float(batch["loss"].mean().detach().cpu().item())
+        self.history.append(loss_value)
+        if loss_value < self.best_loss:
+            self.best_loss = loss_value
+        return {"loss": loss_value, "log_pbar": True}
 
 
 def train_bc(
@@ -48,7 +90,7 @@ def train_bc(
         else ("cuda" if torch.cuda.is_available() else "cpu")
     )
 
-    print(f"Training BC (Torch) on data from: {data_path}")
+    print(f"Training BC (TorchRL) on data from: {data_path}")
     print(f"Encoding type: {encoding_type}")
     print(f"Observation dim: {obs_dim}, Action dim: {ACTION_DIM}")
 
@@ -58,7 +100,7 @@ def train_bc(
     print(f"  Learning rate: {lr}")
     print(f"  Weight decay: {weight_decay}")
     print(f"  Device: {torch_device}")
-    print(f"  Training epochs: {num_iterations}")
+    print(f"  Training epochs (approx via frames): {num_iterations}")
     print(f"  Checkpoint frequency: {checkpoint_freq}")
 
     dataset = OfflineTransitionDataset(json_files=json_files, obs_dim=obs_dim)
@@ -67,6 +109,7 @@ def train_bc(
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=torch_device.type == "cuda",
+        collate_fn=lambda batch: TensorDict.stack(batch, dim=0),
     )
 
     model = BCPolicyNet(
@@ -76,10 +119,38 @@ def train_bc(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.CrossEntropyLoss()
+    loss_module = BCLossModule(model=model, criterion=criterion)
 
-    best_loss = float("inf")
-    best_checkpoint: Optional[Path] = None
-    loss_history: List[dict] = []
+    logger = get_logger(
+        "tensorboard", logger_name="bc_trainer", log_dir=output_path / "logs"
+    )
+    log_loss = LogScalar(key="loss", logname="train/loss", log_pbar=True)
+    frames_log = CountFramesLog()
+    loss_tracker = LossTracker()
+
+    total_frames = num_iterations * len(dataset)
+
+    def infinite_collector():
+        while True:
+            for batch in dataloader:
+                yield batch.to(device=torch_device, non_blocking=True)
+
+    trainer = Trainer(
+        collector=infinite_collector(),
+        total_frames=total_frames,
+        loss_module=loss_module,
+        optimizer=optimizer,
+        optim_steps_per_batch=1,
+        save_trainer_file=output_path / "trainer_state.pt",
+        logger=logger,
+        progress_bar=True,
+        log_interval=checkpoint_freq,
+    )
+    trainer.register_module(model, "model")
+    trainer.register_module(optimizer, "optimizer")
+    loss_tracker.register(trainer)
+    log_loss.register(trainer)
+    frames_log.register(trainer)
 
     metadata = {
         "encoding_type": encoding_type,
@@ -92,80 +163,29 @@ def train_bc(
     }
 
     print("\nStarting training...")
+    trainer.train()
 
-    for epoch in range(1, num_iterations + 1):
-        model.train()
-        running_loss = 0.0
-        sample_count = 0
+    trainer_state = trainer.state_dict(full_state=True)
+    trainer_state["metadata"] = metadata
+    trainer_state_path = output_path / "trainer_state.pt"
+    torch.save(trainer_state, trainer_state_path)
 
-        progress = tqdm(dataloader, desc=f"Epoch {epoch}/{num_iterations}", leave=False)
-
-        for obs_batch, action_batch in progress:
-            obs_batch = obs_batch.to(torch_device, non_blocking=True)
-            action_batch = action_batch.to(torch_device, non_blocking=True)
-
-            optimizer.zero_grad()
-            logits = model(obs_batch)
-            loss = criterion(logits, action_batch)
-            loss.backward()
-            optimizer.step()
-
-            batch_size_effective = action_batch.shape[0]
-            running_loss += loss.item() * batch_size_effective
-            sample_count += batch_size_effective
-
-            progress.set_postfix({"loss": loss.item()})
-
-        avg_loss = running_loss / max(sample_count, 1)
-        loss_history.append({"epoch": epoch, "loss": float(avg_loss)})
-
-        print(f"Epoch {epoch}/{num_iterations} - avg loss: {avg_loss:.6f}")
-
-        if avg_loss < best_loss:
-            best_loss = avg_loss
-            best_checkpoint = save_checkpoint(
-                output_dir=output_path,
-                epoch=epoch,
-                model=model,
-                optimizer=optimizer,
-                metadata={**metadata, "best_loss": best_loss},
-            )
-            print(f"  New best checkpoint -> {best_checkpoint}")
-
-        if epoch % checkpoint_freq == 0:
-            ckpt_path = save_checkpoint(
-                output_dir=output_path,
-                epoch=epoch,
-                model=model,
-                optimizer=optimizer,
-                metadata={**metadata, "epoch_loss": avg_loss},
-            )
-            print(f"  Checkpoint saved to: {ckpt_path}")
-
-    final_checkpoint = save_checkpoint(
-        output_dir=output_path,
-        epoch=num_iterations,
-        model=model,
-        optimizer=optimizer,
-        metadata={**metadata, "final_loss": loss_history[-1]["loss"]},
-    )
+    final_loss = loss_tracker.history[-1] if loss_tracker.history else float("nan")
+    best_loss = loss_tracker.best_loss if loss_tracker.history else float("inf")
+    metadata["final_loss"] = final_loss
 
     history_path = output_path / "loss_history.jsonl"
 
     with open(history_path, "w") as f:
-        for entry in loss_history:
-            f.write(json.dumps(entry) + "\n")
+        for step, loss_val in enumerate(loss_tracker.history, start=1):
+            f.write(json.dumps({"step": step, "loss": loss_val}) + "\n")
 
     print("\nTraining complete!")
-
-    if best_checkpoint:
-        print(f"Best checkpoint saved to: {best_checkpoint}")
-
-    print(f"Final checkpoint saved to: {final_checkpoint}")
     print(f"Loss history logged to: {history_path}")
+    print(f"Trainer state saved to: {trainer_state_path}")
     print(f"Best loss achieved: {best_loss:.6f}")
 
-    return str(final_checkpoint)
+    return str(trainer_state_path)
 
 
 if __name__ == "__main__":

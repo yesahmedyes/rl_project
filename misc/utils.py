@@ -1,10 +1,11 @@
 import json
 import random
 from pathlib import Path
-from typing import Iterable, Sequence, Tuple
+from typing import Iterable, Sequence
 
 import numpy as np
 import torch
+from tensordict import TensorDict
 from torch.utils.data import IterableDataset, get_worker_info
 
 
@@ -12,8 +13,9 @@ class OfflineTransitionDataset(IterableDataset):
     def __init__(self, json_files: Sequence[Path], obs_dim: int):
         self.json_files = [Path(p) for p in json_files]
         self.obs_dim = obs_dim
+        self._length = None
 
-    def _iter_file(self, path: Path) -> Iterable[Tuple[torch.Tensor, torch.Tensor]]:
+    def _iter_file(self, path: Path) -> Iterable[TensorDict]:
         with open(path, "r") as f:
             for line in f:
                 if not line.strip():
@@ -28,7 +30,7 @@ class OfflineTransitionDataset(IterableDataset):
                             f"Episode entry must be a dict, got {type(episode)}"
                         )
 
-                    # Prefer TorchRL Episode Data (TED) format if present.
+                    # TorchRL Episode Data (TED) format preferred.
                     if "steps" in episode:
                         for step in episode.get("steps", []):
                             obs = step.get("observation")
@@ -44,9 +46,14 @@ class OfflineTransitionDataset(IterableDataset):
                                     f"got {obs_arr.shape[0]} from {path}"
                                 )
 
-                            yield (
-                                torch.from_numpy(obs_arr),
-                                torch.tensor(int(action), dtype=torch.long),
+                            yield TensorDict(
+                                {
+                                    "observation": torch.from_numpy(obs_arr),
+                                    "action": torch.tensor(
+                                        int(action), dtype=torch.long
+                                    ),
+                                },
+                                batch_size=[],
                             )
 
     def __iter__(self):
@@ -64,24 +71,25 @@ class OfflineTransitionDataset(IterableDataset):
         for path in files:
             yield from self._iter_file(path)
 
+    def _compute_length(self) -> int:
+        count = 0
 
-def save_checkpoint(
-    output_dir: Path,
-    epoch: int,
-    model: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
-    metadata: dict,
-) -> Path:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    ckpt_path = output_dir / f"model_epoch_{epoch:05d}.pt"
+        for path in self.json_files:
+            with open(path, "r") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    parsed = json.loads(line)
+                    episodes = parsed if isinstance(parsed, list) else [parsed]
 
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "metadata": metadata,
-        },
-        ckpt_path,
-    )
+                    for episode in episodes:
+                        if not isinstance(episode, dict):
+                            continue
+                        steps = episode.get("steps", [])
+                        count += len(steps)
+        return count
 
-    return ckpt_path
+    def __len__(self) -> int:
+        if self._length is None:
+            self._length = self._compute_length()
+        return self._length

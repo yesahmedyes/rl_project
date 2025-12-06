@@ -43,9 +43,13 @@ class Policy_BC:
             raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}.")
 
         checkpoint = torch.load(str(ckpt), map_location=self.device)
-        metadata = (
-            checkpoint.get("metadata", {}) if isinstance(checkpoint, dict) else {}
-        )
+
+        if not isinstance(checkpoint, dict):
+            raise ValueError("TorchRL checkpoint must be a dict containing modules.")
+
+        metadata = checkpoint.get("metadata", {})
+        modules = checkpoint.get("modules", {})
+        state_dict = modules.get("model")
 
         obs_dim = metadata.get("obs_dim")
         hidden_layers = metadata.get("hidden_layers", [256, 256])
@@ -53,12 +57,8 @@ class Policy_BC:
         if obs_dim is None:
             obs_dim = 70 if encoding_type == "handcrafted" else 946
 
-        state_dict = (
-            checkpoint.get("model_state_dict") if isinstance(checkpoint, dict) else None
-        )
-
         if state_dict is None:
-            raise ValueError("Torch BC checkpoint is missing 'model_state_dict'")
+            raise ValueError("Checkpoint missing model weights.")
 
         self.model = BCPolicyNet(
             obs_dim=obs_dim,
