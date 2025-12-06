@@ -8,7 +8,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tensordict import TensorDict
 from torchrl.trainers import CountFramesLog, LogScalar, Trainer
-from torchrl.trainers.loggers import get_logger
+from torchrl.record.loggers import get_logger
 
 from misc.utils import OfflineTransitionDataset
 from policies.policy_bc import BCPolicyNet
@@ -122,10 +122,13 @@ def train_bc(
     loss_module = BCLossModule(model=model, criterion=criterion)
 
     logger = get_logger(
-        "tensorboard", logger_name="bc_trainer", log_dir=output_path / "logs"
+        "tensorboard",
+        experiment_name="bc_trainer",
+        logger_name="bc_trainer",
+        log_dir=output_path / "logs",
     )
     log_loss = LogScalar(key="loss", logname="train/loss", log_pbar=True)
-    frames_log = CountFramesLog()
+    frames_log = CountFramesLog(frame_skip=1)
     loss_tracker = LossTracker()
 
     total_frames = num_iterations * len(dataset)
@@ -165,14 +168,19 @@ def train_bc(
     print("\nStarting training...")
     trainer.train()
 
+    final_loss = loss_tracker.history[-1] if loss_tracker.history else float("nan")
+    best_loss = loss_tracker.best_loss if loss_tracker.history else float("inf")
+    metadata["final_loss"] = final_loss
+    metadata["best_loss"] = best_loss
+
     trainer_state = trainer.state_dict(full_state=True)
     trainer_state["metadata"] = metadata
     trainer_state_path = output_path / "trainer_state.pt"
     torch.save(trainer_state, trainer_state_path)
 
-    final_loss = loss_tracker.history[-1] if loss_tracker.history else float("nan")
-    best_loss = loss_tracker.best_loss if loss_tracker.history else float("inf")
-    metadata["final_loss"] = final_loss
+    inference_state = {"metadata": metadata, "state_dict": model.state_dict()}
+    inference_path = output_path / "bc_policy.pt"
+    torch.save(inference_state, inference_path)
 
     history_path = output_path / "loss_history.jsonl"
 
@@ -183,6 +191,7 @@ def train_bc(
     print("\nTraining complete!")
     print(f"Loss history logged to: {history_path}")
     print(f"Trainer state saved to: {trainer_state_path}")
+    print(f"Inference checkpoint saved to: {inference_path}")
     print(f"Best loss achieved: {best_loss:.6f}")
 
     return str(trainer_state_path)

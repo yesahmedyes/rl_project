@@ -45,11 +45,14 @@ class Policy_BC:
         checkpoint = torch.load(str(ckpt), map_location=self.device)
 
         if not isinstance(checkpoint, dict):
-            raise ValueError("TorchRL checkpoint must be a dict containing modules.")
+            raise ValueError("Checkpoint must be a dict containing model weights.")
 
         metadata = checkpoint.get("metadata", {})
-        modules = checkpoint.get("modules", {})
-        state_dict = modules.get("model")
+        state_dict = checkpoint.get("state_dict")
+
+        if state_dict is None:
+            modules = checkpoint.get("modules", {})
+            state_dict = modules.get("model")
 
         obs_dim = metadata.get("obs_dim")
         hidden_layers = metadata.get("hidden_layers", [256, 256])
